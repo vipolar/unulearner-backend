@@ -68,6 +68,15 @@ public class EnglishWordlistRepositoryController {
         }
     }
 
+    @GetMapping(path="/get/word")
+    public ResponseEntity<Iterable<EnglishWordlist>> getWordsFuzzy(
+            @RequestParam(name="query", required = true) String queryString){
+
+        Iterable<EnglishWordlist> EnglishWordlist = englishWordlistRepository.findAllMatching(queryString);
+
+        return new ResponseEntity<>(EnglishWordlist, HttpStatus.OK);
+    }
+
     @GetMapping(path="/get/all")
     public ResponseEntity<Iterable<EnglishWordlist>> getAllWords(
             @RequestParam(required = false, defaultValue = "0") Integer page,
