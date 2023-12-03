@@ -1,7 +1,6 @@
 package com.unulearner.backend.services.files.storage;
 
-import java.util.List;
-import java.util.stream.Collectors;
+import java.io.IOException;
 
 //import org.springframework.web.bind.annotation.CrossOrigin;
 
@@ -18,10 +17,9 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseBody;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.web.servlet.mvc.method.annotation.MvcUriComponentsBuilder;
 
 import com.unulearner.backend.services.files.storage.helper.FileUploadResponseMessage;
-import com.unulearner.backend.services.files.storage.helper.FileUploadDataModel;
+import com.unulearner.backend.services.files.storage.tree.TreeRoot;
 
 @Controller
 public class FilesStorageServiceController {
@@ -39,29 +37,31 @@ public class FilesStorageServiceController {
             storageService.save(file, dir);
 
             message = "Uploaded the file successfully: " + file.getOriginalFilename();
-            return ResponseEntity.status(HttpStatus.OK).body(new FileUploadResponseMessage(message));
+            return new ResponseEntity<>(new FileUploadResponseMessage(message), HttpStatus.OK);
         } catch (Exception e) {
             message = "Could not upload the file: " + file.getOriginalFilename() + ". Error: " + e.getMessage();
-            return ResponseEntity.status(HttpStatus.EXPECTATION_FAILED).body(new FileUploadResponseMessage(message));
+            return new ResponseEntity<>(new FileUploadResponseMessage(message), HttpStatus.EXPECTATION_FAILED);
         }
     }
 
     @GetMapping("/files")
-    public ResponseEntity<List<FileUploadDataModel>> getListFiles() {
-        List<FileUploadDataModel> fileInfos = storageService.loadAll().map(path -> {
-            String filename = path.getFileName().toString();
-            String url = MvcUriComponentsBuilder
-                    .fromMethodName(FilesStorageServiceController.class, "getFile", path.getFileName().toString()).build().toString();
+    public ResponseEntity<TreeRoot> getListFiles(
+        @RequestParam(name="root", required = false, defaultValue = "/") String rootPath
+    ) {
+        try {
+            TreeRoot root = storageService.loadAll(rootPath);
 
-            return new FileUploadDataModel(filename, url);
-        }).collect(Collectors.toList());
-
-        return ResponseEntity.status(HttpStatus.OK).body(fileInfos);
+            return new ResponseEntity<>(root, HttpStatus.OK);
+        } catch (IOException e) {
+            e.printStackTrace();
+            return new ResponseEntity<>(HttpStatus.INTERNAL_SERVER_ERROR);
+        }
     }
 
     @GetMapping("/files/{filename:.+}")
     @ResponseBody
     public ResponseEntity<Resource> getFile(@PathVariable String filename) {
+        /* TODO: get the heads and tails of headers! */
         Resource file = storageService.load(filename);
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + file.getFilename() + "\"")

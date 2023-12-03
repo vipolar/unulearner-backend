@@ -36,6 +36,7 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.POST, "/content/english/wordlist/add/**").hasRole(MEMBER)
                 .requestMatchers(HttpMethod.POST, "/content/english/dictionary/add/**").hasRole(MEMBER)
                 .requestMatchers(HttpMethod.POST, "/files/**").hasRole(MEMBER)
+                .requestMatchers(HttpMethod.GET, "/files/**").hasRole(MEMBER)
                 .anyRequest()
                 .authenticated()
             )

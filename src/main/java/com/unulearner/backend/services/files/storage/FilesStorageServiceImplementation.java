@@ -4,7 +4,6 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.Files;
 import java.io.IOException;
-import java.util.stream.Stream;
 import java.net.MalformedURLException;
 import java.nio.file.FileAlreadyExistsException;
 
@@ -13,20 +12,29 @@ import org.springframework.stereotype.Service;
 import org.springframework.core.io.UrlResource;
 import org.springframework.util.FileSystemUtils;
 import org.springframework.web.multipart.MultipartFile;
-import org.springframework.beans.factory.annotation.Autowired;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
 import com.unulearner.backend.configuration.properties.StorageProperties;
+
+import com.unulearner.backend.services.files.storage.tree.TreeBuilderService;
+import com.unulearner.backend.services.files.storage.tree.TreeMetadata;
+import com.unulearner.backend.services.files.storage.tree.TreeRoot;
 
 @Service
 public class FilesStorageServiceImplementation implements FilesStorageService {
 
-    private String root;
+    private TreeBuilderService treeBuilder;
+    private String metadataFile;
     private Path rootPath;
+    private String root;
 
-    @Autowired
-    public FilesStorageServiceImplementation(StorageProperties storageProperties) {
+    // @Autowired
+    public FilesStorageServiceImplementation(TreeBuilderService treeBuilder, StorageProperties storageProperties) {
+        this.metadataFile = storageProperties.getMetaDataFileName();
         this.root = storageProperties.getRootDirectory();
         this.rootPath = Paths.get(root);
+        this.treeBuilder = treeBuilder;
     }
 
     public void save(MultipartFile file, String directory) {
@@ -34,7 +42,17 @@ public class FilesStorageServiceImplementation implements FilesStorageService {
         Path savePath = Paths.get(saveURI);
 
         try {
-            Files.createDirectories(savePath);
+            Path currentPath = Files.createDirectory(savePath);
+
+            while (!currentPath.equals(this.rootPath) && !Files.exists(currentPath.resolve(this.metadataFile))) {
+                TreeMetadata metadata = new TreeMetadata();
+
+                ObjectMapper mapper = new ObjectMapper(new YAMLFactory());
+                String metadataContent = mapper.writeValueAsString(metadata);
+                Files.write(currentPath.resolve(this.metadataFile), metadataContent.getBytes());
+
+                currentPath = currentPath.getParent();
+            }
         } catch (IOException e) {
             throw new RuntimeException("Could not initialize folder for upload!");
         }
@@ -65,11 +83,15 @@ public class FilesStorageServiceImplementation implements FilesStorageService {
         }
     }
 
-    public Stream<Path> loadAll() {
+    public TreeRoot loadAll(String directory) throws IOException {
         try {
-            return Files.walk(this.rootPath, 1).filter(path -> !path.equals(this.rootPath)).map(this.rootPath::relativize);
+            String rootPathString = this.root + directory;
+            Path rootPath = Paths.get(rootPathString);
+
+            TreeRoot root = new TreeRoot(rootPath, this.metadataFile);
+            return treeBuilder.buildDirectoryTree(root, this.metadataFile);
         } catch (IOException e) {
-            throw new RuntimeException("Could not load the files!");
+            throw new RuntimeException("Could not build the directory tree!");
         }
     }
 

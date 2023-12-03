@@ -1,10 +1,10 @@
-package com.unulearner.backend.services.files.storage.helper;
+package com.unulearner.backend.services.files.storage.tree;
 
-public class FileUploadDataModel {
+public class TreeFileNode {
     private String name;
     private String url;
 
-    public FileUploadDataModel(String name, String url) {
+    public TreeFileNode(String name, String url) {
         this.name = name;
         this.url = url;
     }
