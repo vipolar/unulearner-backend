@@ -7,8 +7,17 @@ import org.springframework.stereotype.Component;
 @ConfigurationProperties(prefix = "files.storage.service")
 public class StorageProperties {
 
+	private Integer maxNameLength = 255;
 	private String rootDirectory = "uploads";
-	private String metaDataFileName = ".metadata.yml";
+	private String rootDirectoryDescription = "Example description...";
+
+	public Integer getMaxNameLength() {
+		return maxNameLength;
+	}
+
+	public void setMaxNameLength(Integer maxNameLength) {
+		this.maxNameLength = maxNameLength;
+	}
 
 	public String getRootDirectory() {
 		return rootDirectory;
@@ -18,11 +27,11 @@ public class StorageProperties {
 		this.rootDirectory = rootDirectory;
 	}
 
-	public String getMetaDataFileName() {
-		return metaDataFileName;
+	public String getRootDirectoryDescription() {
+		return rootDirectoryDescription;
 	}
 
-	public void setMetaDataFileName(String metaDataFileName) {
-		this.metaDataFileName = metaDataFileName;
+	public void setRootDirectoryDescription(String rootDirectoryDescription) {
+		this.rootDirectoryDescription = rootDirectoryDescription;
 	}
 }

@@ -1,18 +1,17 @@
 package com.unulearner.backend.services.files.storage;
 
-import java.io.IOException;
 import org.springframework.core.io.Resource;
 import org.springframework.web.multipart.MultipartFile;
 
-import com.unulearner.backend.services.files.storage.tree.TreeRoot;
-
 public interface FilesStorageService {
 
-    public void save(MultipartFile file, String directory);
+    public FilesStorageNode saveFile(MultipartFile file, Long parentId, String description) throws Exception;
+    public Resource getFile(Long fileId) throws Exception;
+    public void deleteFile(Long fileId) throws Exception;
 
-    public TreeRoot loadAll(String directory) throws IOException;
+    public FilesStorageNode saveDirectory(Long parentId, String directory, String description) throws Exception;
+    //public FilesStorageNode getDirectory(Long directoryId) throws Exception;
+    public FilesStorageNode getDirectory(Long directoryId, Boolean checkHealth, Boolean checkOrphans) throws Exception;
+    public void deleteDirectory(Long directoryId) throws Exception;
 
-    public Resource load(String filename);
-
-    public void deleteAll();
 }

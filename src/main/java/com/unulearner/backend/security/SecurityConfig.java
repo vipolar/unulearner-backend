@@ -18,7 +18,7 @@ import org.springframework.security.oauth2.server.resource.authentication.JwtGra
 import org.springframework.security.config.annotation.authentication.builders.AuthenticationManagerBuilder;
 
 @Configuration
-@EnableWebSecurity(debug = true)
+@EnableWebSecurity(debug = false)
 public class SecurityConfig {
     public static final String MEMBER = "member";
 
@@ -35,8 +35,8 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.GET,"/content/english/dictionary/get/**").permitAll()
                 .requestMatchers(HttpMethod.POST, "/content/english/wordlist/add/**").hasRole(MEMBER)
                 .requestMatchers(HttpMethod.POST, "/content/english/dictionary/add/**").hasRole(MEMBER)
-                .requestMatchers(HttpMethod.POST, "/files/**").hasRole(MEMBER)
-                .requestMatchers(HttpMethod.GET, "/files/**").hasRole(MEMBER)
+                .requestMatchers(HttpMethod.POST, "/storage/**").hasRole(MEMBER)
+                .requestMatchers(HttpMethod.GET, "/storage/**").permitAll()
                 .anyRequest()
                 .authenticated()
             )

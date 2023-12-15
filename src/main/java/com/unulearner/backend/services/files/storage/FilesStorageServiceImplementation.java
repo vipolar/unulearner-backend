@@ -1,101 +1,470 @@
 package com.unulearner.backend.services.files.storage;
 
+import java.util.List;
+import java.util.Iterator;
+import java.util.Optional;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.stream.Stream;
+
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.Files;
-import java.io.IOException;
-import java.net.MalformedURLException;
-import java.nio.file.FileAlreadyExistsException;
+
+import jakarta.annotation.PostConstruct;
 
 import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Service;
 import org.springframework.core.io.UrlResource;
 import org.springframework.util.FileSystemUtils;
+import org.springframework.context.annotation.Scope;
 import org.springframework.web.multipart.MultipartFile;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.beans.factory.config.ConfigurableBeanFactory;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
 import com.unulearner.backend.configuration.properties.StorageProperties;
 
-import com.unulearner.backend.services.files.storage.tree.TreeBuilderService;
-import com.unulearner.backend.services.files.storage.tree.TreeMetadata;
-import com.unulearner.backend.services.files.storage.tree.TreeRoot;
-
 @Service
+@Scope(ConfigurableBeanFactory.SCOPE_SINGLETON)
 public class FilesStorageServiceImplementation implements FilesStorageService {
 
-    private TreeBuilderService treeBuilder;
-    private String metadataFile;
+    private FilesStorageNodeRepository filesStorageNodeRepository;
+    private StorageProperties storageProperties;
+    private FilesStorageNode rootNode;
+    private String rootPathString;
     private Path rootPath;
-    private String root;
+    private Long rootId;
 
-    // @Autowired
-    public FilesStorageServiceImplementation(TreeBuilderService treeBuilder, StorageProperties storageProperties) {
-        this.metadataFile = storageProperties.getMetaDataFileName();
-        this.root = storageProperties.getRootDirectory();
-        this.rootPath = Paths.get(root);
-        this.treeBuilder = treeBuilder;
+    public FilesStorageServiceImplementation(FilesStorageNodeRepository filesStorageNodeRepository, StorageProperties storageProperties) {
+        this.filesStorageNodeRepository = filesStorageNodeRepository;
+        this.storageProperties = storageProperties;
     }
 
-    public void save(MultipartFile file, String directory) {
-        String saveURI = this.root + directory;
-        Path savePath = Paths.get(saveURI);
-
+    @PostConstruct
+    public void initializeStorage() throws Exception {
         try {
-            Path currentPath = Files.createDirectory(savePath);
+            this.rootPathString = storageProperties.getRootDirectory();
+            this.rootPath = Paths.get(rootPathString);  
 
-            while (!currentPath.equals(this.rootPath) && !Files.exists(currentPath.resolve(this.metadataFile))) {
-                TreeMetadata metadata = new TreeMetadata();
+            if (Files.exists(this.rootPath)) {
+                this.rootNode = this.filesStorageNodeRepository.getByUrl("/");
 
-                ObjectMapper mapper = new ObjectMapper(new YAMLFactory());
-                String metadataContent = mapper.writeValueAsString(metadata);
-                Files.write(currentPath.resolve(this.metadataFile), metadataContent.getBytes());
-
-                currentPath = currentPath.getParent();
+                if (this.rootNode != null) {
+                    this.rootId = rootNode.getId();
+                    return; // Everything is fine and dandy!
+                }
+            } else {
+                Files.createDirectory(this.rootPath);
             }
-        } catch (IOException e) {
-            throw new RuntimeException("Could not initialize folder for upload!");
-        }
 
-        try {
-            Files.copy(file.getInputStream(), savePath.resolve(file.getOriginalFilename()));
+            FilesStorageNode rootDirectory = new FilesStorageNode();
+
+            rootDirectory.setUrl("/");
+            rootDirectory.setName("/");
+            rootDirectory.setParent(null);
+            rootDirectory.setIsDirectory(true);
+            rootDirectory.setDescription(this.storageProperties.getRootDirectoryDescription());
+            
+            this.rootNode = this.filesStorageNodeRepository.save(rootDirectory);
+            this.rootId = this.rootNode.getId();
         } catch (Exception e) {
-            if (e instanceof FileAlreadyExistsException) {
-                throw new RuntimeException("A file of that name already exists.");
-            }
-
-            throw new RuntimeException(e.getMessage());
+            // Storage initialization failure is a fatal error and should cause a shutdown!
+            throw new RuntimeException("(initializeStorage) Exception occurred: Could not initialize storage!", e);
         }
     }
 
-    public Resource load(String filename) {
+    /* THIS IS A HELPER FUNCTION CALLED ONLY BY *** saveDirectory & saveFile *** METHODS */
+    private String nameValidator(String name) throws Exception {
+        if (name == null || name.trim().isEmpty()) {
+            throw new IllegalArgumentException("(nameValidator) Exception occurred: Directory/file name cannot be null or empty!");
+        }
+
+        if (!name.matches("^[a-zA-Z0-9_-][a-zA-Z0-9_. -]*$")) {
+            throw new IllegalArgumentException("(nameValidator) Exception occurred: Invalid characters found in the directory/file name!");
+        }
+
+        if (name.length() > this.storageProperties.getMaxNameLength()) {
+            throw new IllegalArgumentException("(nameValidator) Exception occurred: Directory/file name exceeds the maximum allowed length!");
+        }
+
+        return name.replace(" ", "_");
+    }
+
+    public FilesStorageNode saveFile(MultipartFile file, Long parentId, String description) throws Exception {
         try {
-            Path file = rootPath.resolve(filename);
-            Resource resource = new UrlResource(file.toUri());
+            String validFileName = nameValidator(file.getOriginalFilename());
+            Path validFilePath = this.rootPath.resolve(validFileName);
+            FilesStorageNode parentNode = this.rootNode;
+            Path parentPath = this.rootPath;
+
+            if (parentId == null) {
+                throw new RuntimeException("(saveFile) Exception occurred: Parent node ID cannot be null!");
+            }
+
+            Optional<FilesStorageNode> optionalFileNode = this.filesStorageNodeRepository.findById(parentId);
+
+            if (!optionalFileNode.isPresent()) {
+                throw new RuntimeException("(saveFile) Exception occurred: Parent node does not exist: " + parentId);
+            }
+
+            parentNode = optionalFileNode.get();
+
+            if (!parentNode.getIsDirectory()) {
+                throw new RuntimeException("(saveFile) Exception occurred: Parent node is not a directory: " + parentId);
+            }
+
+            if (parentNode.getId() != this.rootId) {
+                parentPath = this.rootPath.resolve(parentNode.getUrl());
+                validFilePath = parentPath.resolve(validFileName);
+            }
+            
+
+            if (parentPath == null || !Files.exists(parentPath)) {
+                throw new RuntimeException("(saveFile) Exception occurred: Requirements for file creation were not met!");
+            }
+
+            if (Files.exists(validFilePath)) {
+                throw new RuntimeException("(saveFile) Exception occurred: A file with the same name already exists in the specified directory: " + validFilePath);
+            }
+
+            Files.copy(file.getInputStream(), validFilePath);
+
+            FilesStorageNode newFile = new FilesStorageNode();
+
+            newFile.setParent(parentNode);
+            newFile.setDescription(description);
+            newFile.setIsDirectory(false);
+            newFile.setName(validFilePath.getFileName().toString());
+            newFile.setUrl(this.rootPath.relativize(validFilePath).toString());
+
+            return this.filesStorageNodeRepository.save(newFile);
+        } catch (Exception e) {
+            throw new RuntimeException("(saveFile) Exception occurred: Could not commit file to disk or database!", e);
+        }
+    }
+
+    public Resource getFile(Long fileId) throws Exception {
+        try {
+            if (fileId == null) {
+                throw new RuntimeException("(getFile) Exception occurred: File ID cannot be null!");
+            }
+
+            Optional<FilesStorageNode> optionalFileNode = this.filesStorageNodeRepository.findById(fileId);
+
+            if (!optionalFileNode.isPresent()) {
+                throw new RuntimeException("(getFile) Exception occurred: Target node does not exist: " + fileId);
+            }
+
+            FilesStorageNode fileNode = optionalFileNode.get();
+
+            if (fileNode.getIsDirectory()) {
+                throw new RuntimeException("(getFile) Exception occurred: Target node is a directory: " + fileId);
+            }
+
+            Path validFilePath = this.rootPath.resolve(fileNode.getUrl());
+            Resource resource = new UrlResource(validFilePath.toUri());
 
             if (resource.exists() || resource.isReadable()) {
                 return resource;
             } else {
-                throw new RuntimeException("Could not read the file!");
+                throw new RuntimeException("(getFile) Exception occurred: Could not read the file!");
             }
-        } catch (MalformedURLException e) {
-            throw new RuntimeException("Error: " + e.getMessage());
+        } catch (Exception e) {
+            throw new RuntimeException("(getFile) Exception occurred: File download failed: " + e.getMessage());
         }
     }
 
-    public TreeRoot loadAll(String directory) throws IOException {
+    public void deleteFile(Long fileId) throws Exception {
         try {
-            String rootPathString = this.root + directory;
-            Path rootPath = Paths.get(rootPathString);
+            FilesStorageNode targetNode = null;
+            Path targetPath = null;
 
-            TreeRoot root = new TreeRoot(rootPath, this.metadataFile);
-            return treeBuilder.buildDirectoryTree(root, this.metadataFile);
-        } catch (IOException e) {
-            throw new RuntimeException("Could not build the directory tree!");
+            if (fileId == null) {
+                throw new RuntimeException("(deleteFile) Exception occurred: File node ID cannot be null!");
+            }
+
+            Optional<FilesStorageNode> optionalFileNode = this.filesStorageNodeRepository.findById(fileId);
+
+            if (!optionalFileNode.isPresent()) {
+                throw new RuntimeException("(deleteFile) Exception occurred: Target node does not exist: " + fileId);
+            }
+
+            targetNode = optionalFileNode.get();
+
+            if (targetNode.getIsDirectory()) {
+                throw new RuntimeException("(deleteFile) Exception occurred: Target node is a directory: " + fileId);
+            }
+
+            if (targetNode.getId() == this.rootId) {
+                throw new RuntimeException("(deleteFile) Exception occurred: Root directory cannot be deleted! (How did you even get here?!)");
+            }
+
+            targetPath = this.rootPath.resolve(targetNode.getUrl());
+
+            if (targetPath == null || !Files.exists(targetPath)) {
+                //TODO: targetNode.setDamaged(true);
+                throw new RuntimeException("(deleteFile) Exception occurred: File does not exist on disk: " + targetPath);
+            }
+
+            this.filesStorageNodeRepository.delete(targetNode);
+            Files.delete(targetPath);
+        } catch (Exception e) {
+            throw new RuntimeException("(deleteFile) Exception occurred: Could not delete file!", e);
         }
     }
 
-    public void deleteAll() {
-        FileSystemUtils.deleteRecursively(rootPath.toFile());
+    public FilesStorageNode saveDirectory(Long parentId, String directoryName, String description) throws Exception {
+        try {
+            Path parentPath = this.rootPath;
+            FilesStorageNode parentNode = this.rootNode;
+            String validDirectoryName = nameValidator(directoryName);
+            Path validDirectoryPath = this.rootPath.resolve(validDirectoryName);
+            
+            if (parentId == null) {
+                throw new RuntimeException("(saveDirectory) Exception occurred: Parent node ID cannot be null!");
+            }
+
+            Optional<FilesStorageNode> optionalFileNode = this.filesStorageNodeRepository.findById(parentId);
+
+            if (!optionalFileNode.isPresent()) {
+                throw new RuntimeException("(saveDirectory) Exception occurred: Parent node does not exist: " + parentId);
+            }
+
+            parentNode = optionalFileNode.get();
+
+            if (!parentNode.getIsDirectory()) {
+                throw new RuntimeException("(saveDirectory) Exception occurred: Parent node is not a directory: " + parentId);
+            }
+
+            if (parentNode.getId() != this.rootId) {
+                parentPath = this.rootPath.resolve(parentNode.getUrl());
+                validDirectoryPath = parentPath.resolve(validDirectoryName);
+            }
+
+            if (parentPath == null || !Files.exists(parentPath)) {
+                throw new RuntimeException("(saveDirectory) Exception occurred: Requirements for directory creation were not met: " + parentPath);
+            }
+
+            if (Files.exists(validDirectoryPath)) {
+                throw new RuntimeException("(saveDirectory) Exception occurred: A directory with the same name already exists in the specified directory: " + validDirectoryPath);
+            }
+
+            Path newDirectoryPath = Files.createDirectory(validDirectoryPath);
+            FilesStorageNode newDirectory = new FilesStorageNode();
+
+            newDirectory.setParent(parentNode);
+            newDirectory.setDescription(description);
+            newDirectory.setIsDirectory(true);
+            newDirectory.setName(newDirectoryPath.getFileName().toString());
+            newDirectory.setUrl(this.rootPath.relativize(newDirectoryPath).toString());
+
+            return this.filesStorageNodeRepository.save(newDirectory);
+        } catch (Exception e) {
+            throw new RuntimeException("(saveDirectory) Exception occurred: Could not commit directory to disk or database!", e);
+        }
     }
+
+    /******* ALL ABOUT THEM DIRECTORIES AND THEIR HEALTH *******/
+    public FilesStorageNode getDirectory(Long directoryId, Boolean checkHealth, Boolean checkOrphans) throws Exception {
+        try {
+            FilesStorageNode rootDirectory = this.rootNode;
+
+            if (directoryId != null) {
+                Optional<FilesStorageNode> optionalFileNode = this.filesStorageNodeRepository.findById(directoryId);
+
+                if (!optionalFileNode.isPresent()) {
+                    throw new RuntimeException("(getDirectory) Exception occurred: Target node does not exist: " + directoryId);
+                }
+
+                rootDirectory = optionalFileNode.get();
+
+                if (!rootDirectory.getIsDirectory()) {
+                    throw new RuntimeException("(getDirectory) Exception occurred: Target node is not a directory: " + directoryId);
+                }
+
+                if (!Files.exists(this.rootPath.resolve(rootDirectory.getUrl()))) {
+                    throw new RuntimeException("(getDirectory) Exception occurred: Target directory does not exist on disk: " + directoryId);
+                }
+            }
+
+            buildNodeTree(rootDirectory, checkHealth, checkOrphans);
+
+            return rootDirectory;
+        } catch (Exception e) {
+            e.printStackTrace();
+            throw new RuntimeException("(getDirectory) Exception occurred: Could not build directory tree!", e);
+        }
+    }
+
+    private void buildNodeTree(FilesStorageNode parentNode, Boolean checkHealth, Boolean checkOrphans) {
+        List<FilesStorageNode> childNodes = this.filesStorageNodeRepository.findAllByParentIdOrderByIsDirectoryDescNameAsc(parentNode.getId());
+        parentNode.setChildNodes(childNodes);
+        List<Path> allFilesPathsList = null;
+        Boolean isMarkedForUpdate = null;
+
+        if (checkHealth) {
+            try {
+                Path targetPath = this.rootPath;
+                if (parentNode.getId() != this.rootId) {
+                    targetPath = this.rootPath.resolve(parentNode.getUrl());
+                }
+                Stream<Path> filePathsStream = Files.list(targetPath);
+                allFilesPathsList = new ArrayList<>(filePathsStream.toList());
+
+                filePathsStream.close();
+            } catch (Exception e) {
+                throw new RuntimeException("(getDirectory:healthCheck) Exception occurred: Failed to get the directory contents!", e);
+            }
+        }
+
+        for (FilesStorageNode child : childNodes) {
+            if (checkHealth) {
+                try {
+                    Path targetPath = this.rootPath.resolve(child.getUrl());
+                    if (!Files.exists(targetPath)) {
+                        child.setExistsOnDisk(false);
+                        isMarkedForUpdate = true;
+                    }
+
+                    if (!child.getIsDirectory()) {
+                        Resource resource = new UrlResource(targetPath.toUri());
+                        if (!(resource.exists() || resource.isReadable())) {
+                            child.setIsReadable(false);
+                            isMarkedForUpdate = true;
+                        }
+                    }
+
+                    if (!child.getExistsOnDisk() && !child.getIsVerified()) {
+                        this.filesStorageNodeRepository.delete(child);
+                    }
+
+                    if (isMarkedForUpdate != null && isMarkedForUpdate == true) {
+                        this.filesStorageNodeRepository.save(child);
+                    }
+
+                    if (allFilesPathsList != null) { /* Only orphans allowed! */
+                        allFilesPathsList.removeIf(path -> path.equals(targetPath));
+                    }
+                } catch (Exception e) {
+                    throw new RuntimeException("(getDirectory:healthCheck) Exception occurred: Failed to conduct a health check!", e);
+                }
+            }
+
+            if (child.getIsDirectory() && child.getExistsOnDisk()) {
+                System.out.println("buildNodeTree: " + child.getName());
+                buildNodeTree(child, checkHealth, checkOrphans);
+            }
+        }
+
+        if (allFilesPathsList != null && !allFilesPathsList.isEmpty() && checkHealth) {
+            Iterator<Path> iterator = allFilesPathsList.iterator();
+            while (iterator.hasNext()) {
+                Path orphanFilePath = iterator.next();
+                if (Files.exists(orphanFilePath)) {
+                    System.out.println("addOrphan: " + orphanFilePath);
+                    addOrphan(parentNode, orphanFilePath);
+                }
+            }
+        }
+    }
+
+    void addOrphan(FilesStorageNode parentNode, Path orphanFilePath) {
+        FilesStorageNode newFilesStorageNode = new FilesStorageNode();
+        //System.out.println("Parent: " + parentNode.getName() + " Parent URL: " + parentNode.getUrl() + " Caller: " + orphanFilePath);
+
+        newFilesStorageNode.setDescription("");
+        newFilesStorageNode.setName(orphanFilePath.getFileName().toString());
+        newFilesStorageNode.setUrl(this.rootPath.relativize(orphanFilePath).toString());
+
+        newFilesStorageNode.setParent(parentNode);
+        newFilesStorageNode.setIsVerified(false);
+        newFilesStorageNode.setExistsOnDisk(true);
+        newFilesStorageNode.setIsDirectory(Files.isDirectory(orphanFilePath));
+
+        FilesStorageNode addedFilesStorageNode = this.filesStorageNodeRepository.save(newFilesStorageNode);
+        List<FilesStorageNode> parentChildNodes = parentNode.getChildNodes();
+        if (parentChildNodes == null) {
+            parentChildNodes = new ArrayList<>();
+            parentChildNodes.add(addedFilesStorageNode);
+            parentNode.setChildNodes(parentChildNodes);
+        } else {
+            parentChildNodes.add(addedFilesStorageNode);
+        }
+
+        //addedFilesStorageNode is parentNode from here on out!
+        if (newFilesStorageNode.getIsDirectory()) {
+            Path targetPath = this.rootPath;
+            if (addedFilesStorageNode.getId() != this.rootId) {
+                targetPath = this.rootPath.resolve(addedFilesStorageNode.getUrl());
+            }
+            try (Stream<Path> filePathsStream = Files.list(targetPath)) {
+                filePathsStream
+                .forEach(currentOrphanPath -> addOrphan(addedFilesStorageNode, currentOrphanPath));
+            } catch (Exception e) {
+                throw new RuntimeException("(getDirectory:healthCheck) Exception occurred: Failed to get the directory contents!", e);
+            }
+        }
+        //TODO: frontend - verified (also, are we married to "verified"?)
+        List<FilesStorageNode> newChildNodes = addedFilesStorageNode.getChildNodes();
+        if (newChildNodes != null && !newChildNodes.isEmpty()) {
+            Collections.sort(newChildNodes, (node1, node2) -> {
+                if (node1.getIsDirectory() && !node2.getIsDirectory()) {
+                    return -1; // node1 is a directory, so it comes first
+                } else if (!node1.getIsDirectory() && node2.getIsDirectory()) {
+                    return 1; // node2 is a directory, so it comes first
+                } else {
+                    // Both nodes are either directories or files, order them by name
+                    return node1.getName().compareTo(node2.getName());
+                }
+            });
+        }
+    }
+    /******* ALL ABOUT THEM DIRECTORIES AND THEIR HEALTH *******/
+
+    public void deleteDirectory(Long directoryId) throws Exception {
+        try {
+            FilesStorageNode targetNode = null;
+            Path targetPath = null;
+
+            if (directoryId == null) {
+                throw new RuntimeException("(deleteDirectory) Exception occurred: Directory node ID cannot be null!");
+            }
+
+            Optional<FilesStorageNode> optionalFileNode = this.filesStorageNodeRepository.findById(directoryId);
+
+            if (!optionalFileNode.isPresent()) {
+                throw new RuntimeException("(deleteDirectory) Exception occurred: Target node does not exist: " + directoryId);
+            }
+
+            targetNode = optionalFileNode.get();
+
+            if (!targetNode.getIsDirectory()) {
+                throw new RuntimeException("(deleteDirectory) Exception occurred: Target node is not a directory: " + directoryId);
+            }
+
+            if (targetNode.getId() == this.rootId) {
+                throw new RuntimeException("(deleteDirectory) Exception occurred: Root directory cannot be deleted!");
+            }
+
+            targetPath = this.rootPath.resolve(targetNode.getUrl());
+
+            if (targetPath == null || !Files.exists(targetPath)) {
+                //TODO: targetNode.setDamaged(true);
+                throw new RuntimeException("(deleteDirectory) Exception occurred: Directory does not exist on disk: " + targetPath);
+            }
+
+            this.filesStorageNodeRepository.delete(targetNode);
+            FileSystemUtils.deleteRecursively(targetPath);
+        } catch (Exception e) {
+            throw new RuntimeException("(deleteDirectory) Exception occurred: Could not delete directory!", e);
+        }
+    }
+
+/*
+    public void deleteAll() {
+        
+    }
+
+    TODO: REPORT DAMAGED!
+*/ 
 }
