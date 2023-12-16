@@ -10,7 +10,6 @@ public interface FilesStorageService {
     public void deleteFile(Long fileId) throws Exception;
 
     public FilesStorageNode saveDirectory(Long parentId, String directory, String description) throws Exception;
-    //public FilesStorageNode getDirectory(Long directoryId) throws Exception;
     public FilesStorageNode getDirectory(Long directoryId, Boolean checkHealth, Boolean checkOrphans) throws Exception;
     public void deleteDirectory(Long directoryId) throws Exception;
 

@@ -11,6 +11,8 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.Transient;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.OneToMany;
+import jakarta.persistence.PreUpdate;
+import jakarta.persistence.PrePersist;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
@@ -126,47 +128,69 @@ public class FilesStorageNode {
         this.childNodes = childNodes;
     }
 
-    @Column(name = "exists", nullable = false)
-    private Boolean existsOnDisk = true;
+    @Column(name = "confirmed", nullable = false)
+    private Boolean confirmed = true;
 
-    public Boolean getExistsOnDisk() {
-        return existsOnDisk;
+    public Boolean getConfirmed() {
+        return confirmed;
     }
 
-    public void setExistsOnDisk(Boolean existsOnDisk) {
-        this.existsOnDisk = existsOnDisk;
-    }
-
-    @Column(name = "verified", nullable = false)
-    private Boolean isVerified = true;
-
-    public Boolean getIsVerified() {
-        return isVerified;
-    }
-
-    public void setIsVerified(Boolean isVerified) {
-        this.isVerified = isVerified;
+    public void setConfirmed(Boolean confirmed) {
+        this.confirmed = confirmed;
     }
 
     @Column(name = "readable", nullable = false)
-    private Boolean isReadable = true;
+    private Boolean readable = true;
 
-    public Boolean getIsReadable() {
-        return isReadable;
+    public Boolean getReadable() {
+        return readable;
     }
 
-    public void setIsReadable(Boolean isReadable) {
-        this.isReadable = isReadable;
+    public void setReadable(Boolean readable) {
+        this.readable = readable;
+    }
+
+    @Column(name = "physical", nullable = false)
+    private Boolean physical = true;
+
+    public Boolean getPhysical() {
+        return physical;
+    }
+
+    public void setPhysical(Boolean physical) {
+        this.physical = physical;
     }
 
     @Column(name = "malignant", nullable = false)
-    private Boolean isMalignant = false;
+    private Boolean malignant = false;
 
-    public Boolean getIsMalignant() {
-        return isMalignant;
+    public Boolean getMalignant() {
+        return malignant;
     }
 
-    public void setIsMalignant(Boolean isMalignant) {
-        this.isMalignant = isMalignant;
+    public void setMalignant(Boolean malignant) {
+        this.malignant = malignant;
+    }
+
+    @Column(name = "safe", nullable = false)
+    private Boolean safe = false;
+
+    public Boolean getSafe() {
+        return safe;
+    }
+
+    public void setSafe(Boolean safe) {
+        this.safe = safe;
+    }
+
+    @PreUpdate
+    @PrePersist
+    public void preDatabaseCommit() {
+        if (this.confirmed && this.readable && this.physical && !this.malignant) {
+            this.setSafe(true);
+            return;
+        }
+
+        this.setSafe(false);
     }
 }

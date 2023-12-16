@@ -96,13 +96,13 @@ public class FilesStorageServiceController {
 
     @GetMapping("/directory/get/root")
     public ResponseEntity<?> getDirectory(
-        @RequestParam(name = "checkHealth", defaultValue = "true", required = false) Boolean checkHealth,
-        @RequestParam(name = "checkOrphans", defaultValue = "true", required = false) Boolean checkOrphans
+        @RequestParam(name = "diagnostics", defaultValue = "false", required = false) Boolean diagnostics,
+        @RequestParam(name = "recovery", defaultValue = "false", required = false) Boolean recovery
     ) {
     
         String message = "";
         try {
-            FilesStorageNode response = storageService.getDirectory(null, checkHealth, checkOrphans);
+            FilesStorageNode response = storageService.getDirectory(null, diagnostics, recovery);
 
             return new ResponseEntity<>(response, HttpStatus.OK);
         } catch (Exception e) {
@@ -113,8 +113,8 @@ public class FilesStorageServiceController {
 
     @GetMapping("/directory/get/{directoryId}")
     public ResponseEntity<?> getRootDirectory(@PathVariable Long directoryId,
-        @RequestParam(name = "checkHealth", defaultValue = "false", required = false) Boolean checkHealth,
-        @RequestParam(name = "checkOrphans", defaultValue = "false", required = false) Boolean checkOrphans
+        @RequestParam(name = "diagnostics", defaultValue = "false", required = false) Boolean diagnostics,
+        @RequestParam(name = "recovery", defaultValue = "false", required = false) Boolean recovery
     ) {
     
         String message = "";
@@ -123,7 +123,7 @@ public class FilesStorageServiceController {
                 return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
             }
 
-            FilesStorageNode response = storageService.getDirectory(directoryId, checkHealth, checkOrphans);
+            FilesStorageNode response = storageService.getDirectory(directoryId, diagnostics, recovery);
 
             return new ResponseEntity<>(response, HttpStatus.OK);
         } catch (Exception e) {

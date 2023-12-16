@@ -7,8 +7,12 @@ import org.springframework.data.repository.query.Param;
 import java.util.List;
 
 public interface FilesStorageNodeRepository extends JpaRepository<FilesStorageNode, Long>  {
-    //@Query("SELECT node FROM FilesStorageNode node WHERE node.parent.id = :parentId ORDER BY node.isDirectory DESC, node.name")
-    List<FilesStorageNode> findAllByParentIdOrderByIsDirectoryDescNameAsc(@Param("parentId") Long parentId);
+    FilesStorageNode getByParentIsNull(); // Finds the root dirctory (it is the only one that is allowed to have a NULL parent!!!)
 
-    FilesStorageNode getByUrl(String url);
+    //List<FilesStorageNode> findAllByParentIdAndConfirmedTrueAndReadableTrueAndPhysicalTrueAndMalignantFalseOrderByIsDirectoryDescNameAsc(@Param("parentId") Long parentId);
+    //List<FilesStorageNode> findAllByParentIdAndReadableTrueAndPhysicalTrueAndMalignantFalseOrderByIsDirectoryDescNameAsc(@Param("parentId") Long parentId); // Includes unconfirmed
+    //List<FilesStorageNode> findAllByParentIdAndPhysicalTrueAndMalignantFalseOrderByIsDirectoryDescNameAsc(@Param("parentId") Long parentId); // Includes unconfirmed, and unreadable
+    //List<FilesStorageNode> findAllByParentIdAndMalignantFalseOrderByIsDirectoryDescNameAsc(@Param("parentId") Long parentId); // Includes unconfirmed, unreadable, and unreachable
+    List<FilesStorageNode> findAllByParentIdAndSafeTrueOrderByIsDirectoryDescNameAsc(@Param("parentId") Long parentId);
+    List<FilesStorageNode> findAllByParentIdOrderByIsDirectoryDescNameAsc(@Param("parentId") Long parentId);
 }
