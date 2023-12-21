@@ -2,6 +2,7 @@ package com.unulearner.backend.services.files.storage;
 
 import java.util.Date;
 import java.util.List;
+import java.util.UUID;
 
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
@@ -29,22 +30,22 @@ import com.fasterxml.jackson.annotation.JsonManagedReference;
 @Table(name = "storage_node")
 public class FilesStorageNode {
     @Id // Auto-generated ID
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    @Column(name = "id", columnDefinition = "BIGINT", unique = true, nullable = false)
-    private Long id;
+    @GeneratedValue(strategy = GenerationType.UUID)
+    @Column(name = "id", columnDefinition = "UUID", unique = true, nullable = false)
+    private UUID id;
 
-    public Long getId() {
+    public UUID getId() {
         return id;
     }
 
-    public void setId(Long id) {
+    public void setId(UUID id) {
         this.id = id;
     }
 
     @ManyToOne // Represent a tree structure using a self-referential relationship within a single entity.
     @JsonBackReference
     @OnDelete(action = OnDeleteAction.CASCADE)
-    @JoinColumn(name = "parent_id", columnDefinition = "BIGINT", nullable = true)
+    @JoinColumn(name = "parent_id", columnDefinition = "UUID", nullable = true)
     private FilesStorageNode parent;
 
     public FilesStorageNode getParent() {

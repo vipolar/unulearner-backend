@@ -35,6 +35,7 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.GET,"/content/english/dictionary/get/**").permitAll()
                 .requestMatchers(HttpMethod.POST, "/content/english/wordlist/add/**").hasRole(MEMBER)
                 .requestMatchers(HttpMethod.POST, "/content/english/dictionary/add/**").hasRole(MEMBER)
+                .requestMatchers(HttpMethod.DELETE, "/storage/**").hasRole(MEMBER)
                 .requestMatchers(HttpMethod.POST, "/storage/**").hasRole(MEMBER)
                 .requestMatchers(HttpMethod.GET, "/storage/**").permitAll()
                 .anyRequest()

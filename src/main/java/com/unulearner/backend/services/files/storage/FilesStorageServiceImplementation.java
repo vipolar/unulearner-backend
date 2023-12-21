@@ -1,5 +1,6 @@
 package com.unulearner.backend.services.files.storage;
 
+import java.util.UUID;
 import java.util.List;
 import java.util.Iterator;
 import java.util.Optional;
@@ -10,7 +11,6 @@ import java.util.stream.Stream;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.Files;
-import java.nio.file.StandardCopyOption;
 
 import jakarta.annotation.PostConstruct;
 
@@ -34,7 +34,7 @@ public class FilesStorageServiceImplementation implements FilesStorageService {
     private FilesStorageNode rootNode;
     private String rootPathString;
     private Path rootPath;
-    private Long rootId;
+    private UUID rootId;
 
     public FilesStorageServiceImplementation(FilesStorageNodeRepository filesStorageNodeRepository, StorageProperties storageProperties) {
         this.filesStorageNodeRepository = filesStorageNodeRepository;
@@ -80,7 +80,7 @@ public class FilesStorageServiceImplementation implements FilesStorageService {
             throw new IllegalArgumentException("(nameValidator) Exception occurred: Directory/file name cannot be null or empty!");
         }
 
-        if (!name.matches("^[a-zA-Z0-9_-][a-zA-Z0-9_. -]*$")) {
+        if (!name.matches("^[a-zA-Z0-9_-][a-zA-Z0-9_.-]*$")) {
             throw new IllegalArgumentException("(nameValidator) Exception occurred: Invalid characters found in the directory/file name!");
         }
 
@@ -88,10 +88,10 @@ public class FilesStorageServiceImplementation implements FilesStorageService {
             throw new IllegalArgumentException("(nameValidator) Exception occurred: Directory/file name exceeds the maximum allowed length!");
         }
 
-        return name.replace(" ", "_");
+        return name;
     }
 
-    public FilesStorageNode saveFile(MultipartFile file, Long parentId, String description) throws Exception {
+    public FilesStorageNode saveFile(MultipartFile file, UUID parentId, String description) throws Exception {
         try {
             String validFileName = nameValidator(file.getOriginalFilename());
             Path validFilePath = this.rootPath.resolve(validFileName);
@@ -114,7 +114,7 @@ public class FilesStorageServiceImplementation implements FilesStorageService {
                 throw new RuntimeException("(saveFile) Exception occurred: Parent node is not a directory: " + parentId);
             }
 
-            if (parentNode.getId() != this.rootId) {
+            if (!parentNode.getId().equals(this.rootId)) {
                 parentPath = this.rootPath.resolve(parentNode.getUrl());
                 validFilePath = parentPath.resolve(validFileName);
             }
@@ -146,7 +146,68 @@ public class FilesStorageServiceImplementation implements FilesStorageService {
         }
     }
 
-    public Resource getFile(Long fileId) throws Exception {
+    public FilesStorageNode editFile(UUID fileId, String fileName, String description) throws Exception {
+        Boolean isMarkedForUpdate = null;
+
+        try {
+            Path parentPath = this.rootPath;
+            FilesStorageNode targetNode = null;
+            String validFileName = nameValidator(fileName);
+            Path validFilePath = this.rootPath.resolve(validFileName);
+            
+            if (fileId == null) {
+                throw new RuntimeException("(editFile) Exception occurred: File ID cannot be null!");
+            }
+
+            Optional<FilesStorageNode> optionalFileNode = this.filesStorageNodeRepository.findById(fileId);
+
+            if (!optionalFileNode.isPresent()) {
+                throw new RuntimeException("(editFile) Exception occurred: File does not exist: " + fileId);
+            }
+
+            targetNode = optionalFileNode.get();
+
+            if (targetNode.getIsDirectory()) {
+                throw new RuntimeException("(editFile) Exception occurred: Target node is not a file: " + fileId);
+            }
+
+            if (!targetNode.getName().equals(fileName)) {
+                if (!targetNode.getId().equals(this.rootId)) {
+                    parentPath = this.rootPath.resolve(targetNode.getParent().getUrl());
+
+                    if (parentPath == null || !Files.exists(parentPath)) {
+                        throw new RuntimeException("(editFile) Exception occurred: Path resolution has failed: " + parentPath);
+                    }
+
+                    validFilePath = parentPath.resolve(validFileName);
+
+                    if (validFilePath == null || Files.exists(validFilePath)) {
+                        throw new RuntimeException("(editFile) Exception occurred: A file with the same name already exists in the specified directory: " + validFilePath);
+                    }
+
+                    Path newFilePath = Files.move(this.rootPath.resolve(targetNode.getUrl()), validFilePath);
+                    targetNode.setUrl(this.rootPath.relativize(newFilePath).toString());
+                    targetNode.setName(fileName);
+                    isMarkedForUpdate = true;
+                }
+            }
+
+            if (!targetNode.getDescription().equals(description)) {
+                targetNode.setDescription(description);
+                isMarkedForUpdate = true;
+            }
+
+            if (isMarkedForUpdate == null || isMarkedForUpdate == false) {
+                throw new RuntimeException("(editFile) Exception occurred: No changes to commit!");
+            }
+
+            return this.filesStorageNodeRepository.save(targetNode);
+        } catch (Exception e) {
+            throw new RuntimeException("(editFile) Exception occurred: Could not commit file changes to disk or database!", e);
+        }
+    }
+
+    public Resource getFile(UUID fileId) throws Exception {
         try {
             if (fileId == null) {
                 throw new RuntimeException("(getFile) Exception occurred: File ID cannot be null!");
@@ -184,7 +245,7 @@ public class FilesStorageServiceImplementation implements FilesStorageService {
         }
     }
 
-    public void deleteFile(Long fileId) throws Exception {
+    public void deleteFile(UUID fileId) throws Exception {
         try {
             FilesStorageNode targetNode = null;
             Path targetPath = null;
@@ -205,7 +266,7 @@ public class FilesStorageServiceImplementation implements FilesStorageService {
                 throw new RuntimeException("(deleteFile) Exception occurred: Target node is a directory: " + fileId);
             }
 
-            if (targetNode.getId() == this.rootId) {
+            if (targetNode.getId().equals(this.rootId)) {
                 throw new RuntimeException("(deleteFile) Exception occurred: Root directory cannot be deleted! (How did you even get here?!)");
             }
 
@@ -224,7 +285,7 @@ public class FilesStorageServiceImplementation implements FilesStorageService {
         }
     }
 
-    public FilesStorageNode saveDirectory(Long parentId, String directoryName, String description) throws Exception {
+    public FilesStorageNode saveDirectory(UUID parentId, String directoryName, String description) throws Exception {
         try {
             Path parentPath = this.rootPath;
             FilesStorageNode parentNode = this.rootNode;
@@ -247,7 +308,7 @@ public class FilesStorageServiceImplementation implements FilesStorageService {
                 throw new RuntimeException("(saveDirectory) Exception occurred: Parent node is not a directory: " + parentId);
             }
 
-            if (parentNode.getId() != this.rootId) {
+            if (!parentNode.getId().equals(this.rootId)) {
                 parentPath = this.rootPath.resolve(parentNode.getUrl());
                 validDirectoryPath = parentPath.resolve(validDirectoryName);
             }
@@ -277,8 +338,70 @@ public class FilesStorageServiceImplementation implements FilesStorageService {
         }
     }
 
-    @Transactional /******* ALL ABOUT THEM DIRECTORIES AND THEIR HEALTH *******/
-    public FilesStorageNode getDirectory(Long directoryId, Boolean diagnostics, Boolean recovery) throws Exception {
+    public FilesStorageNode editDirectory(UUID directoryId, String directoryName, String description) throws Exception {
+        Boolean isMarkedForUpdate = null;
+
+        try {
+            Path parentPath = this.rootPath;
+            FilesStorageNode targetNode = null;
+            String validDirectoryName = nameValidator(directoryName);
+            Path validDirectoryPath = this.rootPath.resolve(validDirectoryName);
+            
+            if (directoryId == null) {
+                throw new RuntimeException("(editDirectory) Exception occurred: Directory ID cannot be null!");
+            }
+
+            Optional<FilesStorageNode> optionalFileNode = this.filesStorageNodeRepository.findById(directoryId);
+
+            if (!optionalFileNode.isPresent()) {
+                throw new RuntimeException("(editDirectory) Exception occurred: Directory does not exist: " + directoryId);
+            }
+
+            targetNode = optionalFileNode.get();
+
+            if (!targetNode.getIsDirectory()) {
+                throw new RuntimeException("(editDirectory) Exception occurred: Target node is not a directory: " + directoryId);
+            }
+
+            if (!targetNode.getName().equals(directoryName)) {
+                if (!targetNode.getId().equals(this.rootId)) {
+                    parentPath = this.rootPath.resolve(targetNode.getParent().getUrl());
+
+                    if (parentPath == null || !Files.exists(parentPath)) {
+                        throw new RuntimeException("(editDirectory) Exception occurred: Path resolution has failed: " + parentPath);
+                    }
+
+                    validDirectoryPath = parentPath.resolve(validDirectoryName);
+
+                    if (validDirectoryPath == null || Files.exists(validDirectoryPath)) {
+                        throw new RuntimeException("(editDirectory) Exception occurred: A directory with the same name already exists in the specified directory: " + validDirectoryPath);
+                    }
+
+                    Path newDirectoryPath = Files.move(this.rootPath.resolve(targetNode.getUrl()), validDirectoryPath);
+                    targetNode.setUrl(this.rootPath.relativize(newDirectoryPath).toString());
+                    targetNode.setName(directoryName);
+                    isMarkedForUpdate = true;
+                }
+            }
+
+            if (!targetNode.getDescription().equals(description)) {
+                targetNode.setDescription(description);
+                isMarkedForUpdate = true;
+            }
+
+            if (isMarkedForUpdate == null || isMarkedForUpdate == false) {
+                throw new RuntimeException("(editDirectory) Exception occurred: No changes to commit!");
+            }
+
+            return this.filesStorageNodeRepository.save(targetNode);
+        } catch (Exception e) {
+            throw new RuntimeException("(editDirectory) Exception occurred: Could not commit directory changes to disk or database!", e);
+        }
+    }
+
+    /******* (START) ALL ABOUT THEM DIRECTORIES AND THEIR HEALTH (START) *******/
+    @Transactional
+    public FilesStorageNode getDirectory(UUID directoryId, Boolean diagnostics, Boolean recovery) throws Exception {
         try {
             FilesStorageNode targetNode = this.rootNode;
 
@@ -404,7 +527,7 @@ public class FilesStorageServiceImplementation implements FilesStorageService {
                     throw new RuntimeException("(getDirectory:diagnostics:recovery) CONGRATULATIONS: Attempt to rename the orphan file/directory failed because the new name clashed with an existing file! This is such a rare exception that you deserve a FUCKING medal for throwing it! RECOVERY FAILED, GOOD DAY SIR!");
                 }
 
-                targetPath = Files.move(orphanFilePath, targetPath, StandardCopyOption.REPLACE_EXISTING);
+                targetPath = Files.move(orphanFilePath, targetPath);
             } catch (Exception e) {
                 throw new RuntimeException("(getDirectory:diagnostics:recovery) Exception occurred: Failed to give the orphan an appropriate name!", e);
             }
@@ -452,9 +575,9 @@ public class FilesStorageServiceImplementation implements FilesStorageService {
             });
         }
     }
-    /******* ALL ABOUT THEM DIRECTORIES AND THEIR HEALTH *******/
+    /******* (END) ALL ABOUT THEM DIRECTORIES AND THEIR HEALTH (END) *******/
 
-    public void deleteDirectory(Long directoryId) throws Exception {
+    public void deleteDirectory(UUID directoryId) throws Exception {
         try {
             FilesStorageNode targetNode = null;
             Path targetPath = null;
@@ -475,7 +598,7 @@ public class FilesStorageServiceImplementation implements FilesStorageService {
                 throw new RuntimeException("(deleteDirectory) Exception occurred: Target node is not a directory: " + directoryId);
             }
 
-            if (targetNode.getId() == this.rootId) {
+            if (targetNode.getId().equals(this.rootId)) {
                 throw new RuntimeException("(deleteDirectory) Exception occurred: Root directory cannot be deleted!");
             }
 
@@ -493,12 +616,4 @@ public class FilesStorageServiceImplementation implements FilesStorageService {
             throw new RuntimeException("(deleteDirectory) Exception occurred: Could not delete directory!", e);
         }
     }
-
-/*
-    public void deleteAll() {
-        
-    }
-
-    TODO: REPORT DAMAGED!
-*/ 
 }

@@ -1,5 +1,7 @@
 package com.unulearner.backend.services.files.storage;
 
+import java.util.UUID;
+
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpHeaders;
 import org.springframework.core.io.Resource;
@@ -13,12 +15,13 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseBody;
+
 import org.springframework.beans.factory.annotation.Autowired;
 
 import com.unulearner.backend.services.files.storage.responses.StorageControllerResponseMessage;
 
 @Controller
-@RequestMapping(path="/storage")
+@RequestMapping(path = "/storage")
 public class FilesStorageServiceController {
 
     @Autowired
@@ -26,7 +29,7 @@ public class FilesStorageServiceController {
 
     @PostMapping("/file/add")
     public ResponseEntity<?> uploadFile(
-            @RequestParam("parent") Long parentNodeId,
+            @RequestParam("parent") UUID parentNodeId,
             @RequestParam("content") MultipartFile content,
             @RequestParam("description") String description) {
 
@@ -41,9 +44,26 @@ public class FilesStorageServiceController {
         }
     }
 
+    @PostMapping("/file/edit/{fileId}")
+    public ResponseEntity<?> editFile(
+            @PathVariable UUID fileId,
+            @RequestParam("name") String name,
+            @RequestParam("description") String description) {
+
+        String message = "";
+        try {
+            FilesStorageNode response = storageService.editFile(fileId, name, description);
+
+            return new ResponseEntity<>(response, HttpStatus.CREATED);
+        } catch (Exception e) {
+            message = "Could not edit the file: " + name + ". Error: " + e.getMessage();
+            return new ResponseEntity<>(new StorageControllerResponseMessage(message), HttpStatus.EXPECTATION_FAILED);
+        }
+    }
+
     @GetMapping("/file/get/{fileId}")
     @ResponseBody
-    public ResponseEntity<?> getFile(@PathVariable Long fileId) {
+    public ResponseEntity<?> getFile(@PathVariable UUID fileId) {
 
         String message = "";
         try {
@@ -59,8 +79,8 @@ public class FilesStorageServiceController {
     }
 
     @DeleteMapping("/file/delete/{fileId}")
-    public ResponseEntity<StorageControllerResponseMessage> deleteFile(@PathVariable Long fileId) {
-        
+    public ResponseEntity<StorageControllerResponseMessage> deleteFile(@PathVariable UUID fileId) {
+
         String message = "";
         try {
             if (fileId == null) {
@@ -79,27 +99,43 @@ public class FilesStorageServiceController {
 
     @PostMapping("/directory/add")
     public ResponseEntity<?> addDirectory(
-            @RequestParam("parent") Long parentNodeId,
-            @RequestParam("directory") String directoryName,
+            @RequestParam("name") String name,
+            @RequestParam("parent") UUID parentNodeId,
             @RequestParam("description") String description) {
 
         String message = "";
         try {
-            FilesStorageNode response = storageService.saveDirectory(parentNodeId, directoryName, description);
+            FilesStorageNode response = storageService.saveDirectory(parentNodeId, name, description);
 
             return new ResponseEntity<>(response, HttpStatus.CREATED);
         } catch (Exception e) {
-            message = "Could not create the directory: " + directoryName + ". Error: " + e.getMessage();
+            message = "Could not create the directory: " + name + ". Error: " + e.getMessage();
+            return new ResponseEntity<>(new StorageControllerResponseMessage(message), HttpStatus.EXPECTATION_FAILED);
+        }
+    }
+
+    @PostMapping("/directory/edit/{directoryId}")
+    public ResponseEntity<?> editDirectory(
+            @PathVariable UUID directoryId,
+            @RequestParam("name") String name,
+            @RequestParam("description") String description) {
+
+        String message = "";
+        try {
+            FilesStorageNode response = storageService.editDirectory(directoryId, name, description);
+
+            return new ResponseEntity<>(response, HttpStatus.CREATED);
+        } catch (Exception e) {
+            message = "Could not edit the directory: " + name + ". Error: " + e.getMessage();
             return new ResponseEntity<>(new StorageControllerResponseMessage(message), HttpStatus.EXPECTATION_FAILED);
         }
     }
 
     @GetMapping("/directory/get/root")
     public ResponseEntity<?> getDirectory(
-        @RequestParam(name = "diagnostics", defaultValue = "false", required = false) Boolean diagnostics,
-        @RequestParam(name = "recovery", defaultValue = "false", required = false) Boolean recovery
-    ) {
-    
+            @RequestParam(name = "diagnostics", defaultValue = "false", required = false) Boolean diagnostics,
+            @RequestParam(name = "recovery", defaultValue = "false", required = false) Boolean recovery) {
+
         String message = "";
         try {
             FilesStorageNode response = storageService.getDirectory(null, diagnostics, recovery);
@@ -112,11 +148,10 @@ public class FilesStorageServiceController {
     }
 
     @GetMapping("/directory/get/{directoryId}")
-    public ResponseEntity<?> getRootDirectory(@PathVariable Long directoryId,
-        @RequestParam(name = "diagnostics", defaultValue = "false", required = false) Boolean diagnostics,
-        @RequestParam(name = "recovery", defaultValue = "false", required = false) Boolean recovery
-    ) {
-    
+    public ResponseEntity<?> getRootDirectory(@PathVariable UUID directoryId,
+            @RequestParam(name = "diagnostics", defaultValue = "false", required = false) Boolean diagnostics,
+            @RequestParam(name = "recovery", defaultValue = "false", required = false) Boolean recovery) {
+
         String message = "";
         try {
             if (directoryId == null) {
@@ -133,8 +168,8 @@ public class FilesStorageServiceController {
     }
 
     @DeleteMapping("/directory/delete/{directoryId}")
-    public ResponseEntity<StorageControllerResponseMessage> deleteDirectory(@PathVariable Long directoryId) {
-        
+    public ResponseEntity<StorageControllerResponseMessage> deleteDirectory(@PathVariable UUID directoryId) {
+
         String message = "";
         try {
             if (directoryId == null) {
