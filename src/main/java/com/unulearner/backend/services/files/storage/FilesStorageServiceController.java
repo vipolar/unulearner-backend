@@ -44,6 +44,42 @@ public class FilesStorageServiceController {
         }
     }
 
+    @PostMapping("/file/copy/{fileId}/to/{destinationId}")
+    public ResponseEntity<?> copyFile(
+            @PathVariable UUID fileId,
+            @PathVariable UUID destinationId,
+            @RequestParam(name = "conflict", defaultValue = "ignore", required = false) String resolveConflictBy
+            ) {
+
+        String message = "";
+        try {
+            FilesStorageNode response = storageService.copyFile(fileId, destinationId, resolveConflictBy);
+
+            return new ResponseEntity<>(response, HttpStatus.CREATED);
+        } catch (Exception e) {
+            message = "Could not copy the file: {" + fileId + "} to {" + destinationId + "}. Error: " + e.getMessage();
+            return new ResponseEntity<>(new StorageControllerResponseMessage(message), HttpStatus.EXPECTATION_FAILED);
+        }
+    }
+
+    @PostMapping("/file/move/{fileId}/to/{destinationId}")
+    public ResponseEntity<?> moveFile(
+            @PathVariable UUID fileId,
+            @PathVariable UUID destinationId,
+            @RequestParam(name = "conflict", defaultValue = "ignore", required = false) String resolveConflictBy
+            ) {
+
+        String message = "";
+        try {
+            FilesStorageNode response = storageService.moveFile(fileId, destinationId, resolveConflictBy);
+
+            return new ResponseEntity<>(response, HttpStatus.CREATED);
+        } catch (Exception e) {
+            message = "Could not move the file: {" + fileId + "} to {" + destinationId + "}. Error: " + e.getMessage();
+            return new ResponseEntity<>(new StorageControllerResponseMessage(message), HttpStatus.EXPECTATION_FAILED);
+        }
+    }
+
     @PostMapping("/file/edit/{fileId}")
     public ResponseEntity<?> editFile(
             @PathVariable UUID fileId,
@@ -99,17 +135,17 @@ public class FilesStorageServiceController {
 
     @PostMapping("/directory/add")
     public ResponseEntity<?> addDirectory(
-            @RequestParam("name") String name,
+            @RequestParam("name") String directory,
             @RequestParam("parent") UUID parentNodeId,
             @RequestParam("description") String description) {
 
         String message = "";
         try {
-            FilesStorageNode response = storageService.saveDirectory(parentNodeId, name, description);
+            FilesStorageNode response = storageService.saveDirectory(directory, parentNodeId, description);
 
             return new ResponseEntity<>(response, HttpStatus.CREATED);
         } catch (Exception e) {
-            message = "Could not create the directory: " + name + ". Error: " + e.getMessage();
+            message = "Could not create the directory: " + directory + ". Error: " + e.getMessage();
             return new ResponseEntity<>(new StorageControllerResponseMessage(message), HttpStatus.EXPECTATION_FAILED);
         }
     }

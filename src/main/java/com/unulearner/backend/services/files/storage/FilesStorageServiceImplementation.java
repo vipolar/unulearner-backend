@@ -11,6 +11,7 @@ import java.util.stream.Stream;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.Files;
+import java.nio.file.StandardCopyOption;
 
 import jakarta.annotation.PostConstruct;
 
@@ -146,6 +147,182 @@ public class FilesStorageServiceImplementation implements FilesStorageService {
         }
     }
 
+    public FilesStorageNode copyFile(UUID fileId, UUID destinationId, String resolveConflictBy) throws Exception {
+        try {
+            if (fileId == null) {
+                throw new RuntimeException("(copyFile) Exception occurred: File ID cannot be null!");
+            }
+
+            Optional<FilesStorageNode> optionalTargetNode = this.filesStorageNodeRepository.findById(fileId);
+            if (!optionalTargetNode.isPresent()) {
+                throw new RuntimeException("(copyFile) Exception occurred: Target node does not exist: " + fileId);
+            }
+
+            FilesStorageNode targetNode = optionalTargetNode.get();
+            if (targetNode.getIsDirectory()) {
+                throw new RuntimeException("(copyFile) Exception occurred: Target node is a directory: " + fileId);
+            }
+
+            Path validFilePath = this.rootPath.resolve(targetNode.getUrl());
+            if (!Files.exists(validFilePath)) {
+                targetNode.setPhysical(false);
+                this.filesStorageNodeRepository.save(targetNode);
+                throw new RuntimeException("(copyFile) Exception occurred: Could not read the file!");
+            }
+
+            if (destinationId == null) {
+                throw new RuntimeException("(copyFile) Exception occurred: Destination directory ID cannot be null!");
+            }
+
+            Optional<FilesStorageNode> optionalDestinationNode = this.filesStorageNodeRepository.findById(destinationId);
+            if (!optionalDestinationNode.isPresent()) {
+                throw new RuntimeException("(copyFile) Exception occurred: Target node does not exist: " + destinationId);
+            }
+
+            FilesStorageNode destinationNode = optionalDestinationNode.get();
+            if (destinationNode.getIsDirectory()) {
+                throw new RuntimeException("(copyFile) Exception occurred: Target node is a directory: " + destinationId);
+            }
+
+            Path validDestinationPath = this.rootPath.resolve(destinationNode.getUrl());
+            if (!Files.exists(validDestinationPath)) {
+                destinationNode.setPhysical(false);
+                this.filesStorageNodeRepository.save(destinationNode);
+                throw new RuntimeException("(copyFile) Exception occurred: Could not read the parent!");
+            }
+
+            Path finalFilePath = null;
+            String targetFileName = targetNode.getName();
+            Path validFinalPath = validDestinationPath.resolve(targetFileName);
+            if (Files.exists(validFinalPath)) {
+                switch (resolveConflictBy) {
+                    case "overwrite":
+                        finalFilePath = Files.copy(validFilePath, validFinalPath, StandardCopyOption.REPLACE_EXISTING);
+                        break;
+                    case "rename":
+                        String modifiedFileName = null;
+                        Integer fileNameModifier = 1;
+
+                        do {
+                            modifiedFileName = String.format("%s_(%d)_", targetFileName, fileNameModifier++);
+                            validFinalPath = validDestinationPath.resolve(modifiedFileName);
+                        } while (Files.exists(validFinalPath));
+                        
+                        finalFilePath = Files.copy(validFilePath, validFinalPath);
+                        break;
+                    case "ignore":
+                        return targetNode;
+                    default:
+                        throw new RuntimeException("(copyFile) Exception occurred: A file with the same name already exists in the specified directory: " + validFinalPath);
+                }
+            } else {
+                finalFilePath = Files.copy(validFilePath, validFinalPath);
+            }
+
+            if (finalFilePath == null) {
+                throw new RuntimeException("(copyFile) Exception occurred: Moving file failed spectacularily!");
+            }
+
+            FilesStorageNode newFile = new FilesStorageNode();
+
+            newFile.setParent(destinationNode);
+            newFile.setIsDirectory(false);
+            newFile.setDescription(targetNode.getDescription());
+            newFile.setName(finalFilePath.getFileName().toString());
+            newFile.setUrl(this.rootPath.relativize(finalFilePath).toString());
+
+            return this.filesStorageNodeRepository.save(newFile);
+        } catch (Exception e) {
+            throw new RuntimeException("(copyFile) Exception occurred: Could not commit file move to disk or database!", e);
+        }
+    }
+
+    public FilesStorageNode moveFile(UUID fileId, UUID destinationId, String resolveConflictBy) throws Exception {
+        try {
+            if (fileId == null) {
+                throw new RuntimeException("(moveFile) Exception occurred: File ID cannot be null!");
+            }
+
+            Optional<FilesStorageNode> optionalTargetNode = this.filesStorageNodeRepository.findById(fileId);
+            if (!optionalTargetNode.isPresent()) {
+                throw new RuntimeException("(moveFile) Exception occurred: Target node does not exist: " + fileId);
+            }
+
+            FilesStorageNode targetNode = optionalTargetNode.get();
+            if (targetNode.getIsDirectory()) {
+                throw new RuntimeException("(moveFile) Exception occurred: Target node is a directory: " + fileId);
+            }
+
+            Path validFilePath = this.rootPath.resolve(targetNode.getUrl());
+            if (!Files.exists(validFilePath)) {
+                targetNode.setPhysical(false);
+                this.filesStorageNodeRepository.save(targetNode);
+                throw new RuntimeException("(moveFile) Exception occurred: Could not read the file!");
+            }
+
+            if (destinationId == null) {
+                throw new RuntimeException("(moveFile) Exception occurred: Destination directory ID cannot be null!");
+            }
+
+            Optional<FilesStorageNode> optionalDestinationNode = this.filesStorageNodeRepository.findById(destinationId);
+            if (!optionalDestinationNode.isPresent()) {
+                throw new RuntimeException("(moveFile) Exception occurred: Target node does not exist: " + destinationId);
+            }
+
+            FilesStorageNode destinationNode = optionalDestinationNode.get();
+            if (destinationNode.getIsDirectory()) {
+                throw new RuntimeException("(moveFile) Exception occurred: Target node is a directory: " + destinationId);
+            }
+
+            Path validDestinationPath = this.rootPath.resolve(destinationNode.getUrl());
+            if (!Files.exists(validDestinationPath)) {
+                destinationNode.setPhysical(false);
+                this.filesStorageNodeRepository.save(destinationNode);
+                throw new RuntimeException("(moveFile) Exception occurred: Could not read the parent!");
+            }
+
+            Path finalFilePath = null;
+            String targetFileName = targetNode.getName();
+            Path validFinalPath = validDestinationPath.resolve(targetFileName);
+            if (Files.exists(validFinalPath)) {
+                switch (resolveConflictBy) {
+                    case "overwrite":
+                        finalFilePath = Files.move(validFilePath, validFinalPath, StandardCopyOption.REPLACE_EXISTING);
+                        break;
+                    case "rename":
+                        String modifiedFileName = null;
+                        Integer fileNameModifier = 1;
+
+                        do {
+                            modifiedFileName = String.format("%s_(%d)_", targetFileName, fileNameModifier++);
+                            validFinalPath = validDestinationPath.resolve(modifiedFileName);
+                        } while (Files.exists(validFinalPath));
+                        
+                        finalFilePath = Files.move(validFilePath, validFinalPath);
+                        break;
+                    case "ignore":
+                        return targetNode;
+                    default:
+                        throw new RuntimeException("(moveFile) Exception occurred: A file with the same name already exists in the specified directory: " + validFinalPath);
+                }
+            } else {
+                finalFilePath = Files.move(validFilePath, validFinalPath);
+            }
+
+            if (finalFilePath == null) {
+                throw new RuntimeException("(moveFile) Exception occurred: Moving file failed spectacularily!");
+            }
+
+            targetNode.setParent(destinationNode);
+            targetNode.setName(finalFilePath.getFileName().toString());
+            targetNode.setUrl(this.rootPath.relativize(finalFilePath).toString());
+
+            return this.filesStorageNodeRepository.save(targetNode);
+        } catch (Exception e) {
+            throw new RuntimeException("(moveFile) Exception occurred: Could not commit file move to disk or database!", e);
+        }
+    }
+
     public FilesStorageNode editFile(UUID fileId, String fileName, String description) throws Exception {
         Boolean isMarkedForUpdate = null;
 
@@ -214,13 +391,11 @@ public class FilesStorageServiceImplementation implements FilesStorageService {
             }
 
             Optional<FilesStorageNode> optionalFileNode = this.filesStorageNodeRepository.findById(fileId);
-
             if (!optionalFileNode.isPresent()) {
                 throw new RuntimeException("(getFile) Exception occurred: Target node does not exist: " + fileId);
             }
 
             FilesStorageNode targetNode = optionalFileNode.get();
-
             if (targetNode.getIsDirectory()) {
                 throw new RuntimeException("(getFile) Exception occurred: Target node is a directory: " + fileId);
             }
@@ -285,11 +460,11 @@ public class FilesStorageServiceImplementation implements FilesStorageService {
         }
     }
 
-    public FilesStorageNode saveDirectory(UUID parentId, String directoryName, String description) throws Exception {
+    public FilesStorageNode saveDirectory(String directory, UUID parentId, String description) throws Exception {
         try {
             Path parentPath = this.rootPath;
             FilesStorageNode parentNode = this.rootNode;
-            String validDirectoryName = nameValidator(directoryName);
+            String validDirectoryName = nameValidator(directory);
             Path validDirectoryPath = this.rootPath.resolve(validDirectoryName);
             
             if (parentId == null) {
