@@ -48,8 +48,7 @@ public class FilesStorageServiceController {
     public ResponseEntity<?> copyFile(
             @PathVariable UUID fileId,
             @PathVariable UUID destinationId,
-            @RequestParam(name = "conflict", defaultValue = "ignore", required = false) String resolveConflictBy
-            ) {
+            @RequestParam(name = "conflict", defaultValue = "ignore", required = false) String resolveConflictBy) {
 
         String message = "";
         try {
@@ -66,8 +65,7 @@ public class FilesStorageServiceController {
     public ResponseEntity<?> moveFile(
             @PathVariable UUID fileId,
             @PathVariable UUID destinationId,
-            @RequestParam(name = "conflict", defaultValue = "ignore", required = false) String resolveConflictBy
-            ) {
+            @RequestParam(name = "conflict", defaultValue = "ignore", required = false) String resolveConflictBy) {
 
         String message = "";
         try {
@@ -146,6 +144,40 @@ public class FilesStorageServiceController {
             return new ResponseEntity<>(response, HttpStatus.CREATED);
         } catch (Exception e) {
             message = "Could not create the directory: " + directory + ". Error: " + e.getMessage();
+            return new ResponseEntity<>(new StorageControllerResponseMessage(message), HttpStatus.EXPECTATION_FAILED);
+        }
+    }
+
+    @PostMapping("/directory/copy/{directoryId}/to/{destinationId}")
+    public ResponseEntity<?> copyDirectory(
+            @PathVariable UUID directoryId,
+            @PathVariable UUID destinationId,
+            @RequestParam(name = "conflict", defaultValue = "ignore", required = false) String resolveConflictBy) {
+
+        String message = "";
+        try {
+            FilesStorageNode response = storageService.copyDirectory(directoryId, destinationId, resolveConflictBy);
+
+            return new ResponseEntity<>(response, HttpStatus.CREATED);
+        } catch (Exception e) {
+            message = "Could not copy the directory: {" + directoryId + "} to {" + destinationId + "}. Error: " + e.getMessage();
+            return new ResponseEntity<>(new StorageControllerResponseMessage(message), HttpStatus.EXPECTATION_FAILED);
+        }
+    }
+
+    @PostMapping("/directory/move/{directoryId}/to/{destinationId}")
+    public ResponseEntity<?> moveDirectory(
+            @PathVariable UUID directoryId,
+            @PathVariable UUID destinationId,
+            @RequestParam(name = "conflict", defaultValue = "ignore", required = false) String resolveConflictBy) {
+
+        String message = "";
+        try {
+            FilesStorageNode response = storageService.moveDirectory(directoryId, destinationId, resolveConflictBy);
+
+            return new ResponseEntity<>(response, HttpStatus.CREATED);
+        } catch (Exception e) {
+            message = "Could not move the file: {" + directoryId + "} to {" + destinationId + "}. Error: " + e.getMessage();
             return new ResponseEntity<>(new StorageControllerResponseMessage(message), HttpStatus.EXPECTATION_FAILED);
         }
     }

@@ -211,7 +211,6 @@ public class FilesStorageServiceImplementation implements FilesStorageService {
                         finalFilePath = Files.copy(validFilePath, validFinalPath);
                         break;
                     case "ignore":
-                        return targetNode;
                     default:
                         throw new RuntimeException("(copyFile) Exception occurred: A file with the same name already exists in the specified directory: " + validFinalPath);
                 }
@@ -232,6 +231,7 @@ public class FilesStorageServiceImplementation implements FilesStorageService {
             newFile.setUrl(this.rootPath.relativize(finalFilePath).toString());
 
             return this.filesStorageNodeRepository.save(newFile);
+            //TODO: (copyFile) extensive testing needed!!!
         } catch (Exception e) {
             throw new RuntimeException("(copyFile) Exception occurred: Could not commit file move to disk or database!", e);
         }
@@ -301,7 +301,6 @@ public class FilesStorageServiceImplementation implements FilesStorageService {
                         finalFilePath = Files.move(validFilePath, validFinalPath);
                         break;
                     case "ignore":
-                        return targetNode;
                     default:
                         throw new RuntimeException("(moveFile) Exception occurred: A file with the same name already exists in the specified directory: " + validFinalPath);
                 }
@@ -318,6 +317,7 @@ public class FilesStorageServiceImplementation implements FilesStorageService {
             targetNode.setUrl(this.rootPath.relativize(finalFilePath).toString());
 
             return this.filesStorageNodeRepository.save(targetNode);
+            //TODO: (moveFile) extensive testing needed!!!
         } catch (Exception e) {
             throw new RuntimeException("(moveFile) Exception occurred: Could not commit file move to disk or database!", e);
         }
@@ -511,6 +511,251 @@ public class FilesStorageServiceImplementation implements FilesStorageService {
         } catch (Exception e) {
             throw new RuntimeException("(saveDirectory) Exception occurred: Could not commit directory to disk or database!", e);
         }
+    }
+
+    public FilesStorageNode copyDirectory(UUID directoryid, UUID destinationId, String resolveConflictBy) throws Exception {
+        try {
+            if (directoryid == null) {
+                throw new RuntimeException("(copyDirectory) Exception occurred: Directory ID cannot be null!");
+            }
+
+            Optional<FilesStorageNode> optionalTargetNode = this.filesStorageNodeRepository.findById(directoryid);
+            if (!optionalTargetNode.isPresent()) {
+                throw new RuntimeException("(copyDirectory) Exception occurred: Target node does not exist: " + directoryid);
+            }
+
+            FilesStorageNode targetNode = optionalTargetNode.get();
+            if (!targetNode.getIsDirectory()) {
+                throw new RuntimeException("(copyDirectory) Exception occurred: Target node is not a directory: " + directoryid);
+            }
+
+            Path validFilePath = this.rootPath.resolve(targetNode.getUrl());
+            if (!Files.exists(validFilePath)) {
+                targetNode.setPhysical(false);
+                this.filesStorageNodeRepository.save(targetNode);
+                throw new RuntimeException("(copyDirectory) Exception occurred: Could not read the directory!");
+            }
+
+            if (destinationId == null) {
+                throw new RuntimeException("(copyDirectory) Exception occurred: Destination directory ID cannot be null!");
+            }
+
+            Optional<FilesStorageNode> optionalDestinationNode = this.filesStorageNodeRepository.findById(destinationId);
+            if (!optionalDestinationNode.isPresent()) {
+                throw new RuntimeException("(copyDirectory) Exception occurred: Target node does not exist: " + destinationId);
+            }
+
+            FilesStorageNode destinationNode = optionalDestinationNode.get();
+            if (destinationNode.getIsDirectory()) {
+                throw new RuntimeException("(copyDirectory) Exception occurred: Target node is a directory: " + destinationId);
+            }
+
+            Path validDestinationPath = this.rootPath.resolve(destinationNode.getUrl());
+            if (!Files.exists(validDestinationPath)) {
+                destinationNode.setPhysical(false);
+                this.filesStorageNodeRepository.save(destinationNode);
+                throw new RuntimeException("(copyDirectory) Exception occurred: Could not read the parent!");
+            }
+
+            Optional<FilesStorageNode> optionalNewDirectoryNode = copyDirectoryRecursive(targetNode, destinationNode, resolveConflictBy);
+            if (!optionalNewDirectoryNode.isPresent()) {
+                throw new RuntimeException("(copyDirectory) Exception occurred: A directory with the same name already exists in the specified directory: " + validDestinationPath);
+            }
+
+            return optionalNewDirectoryNode.get();
+        } catch (Exception e) {
+            throw new RuntimeException("(copyDirectory) Exception occurred: Could not commit file move to disk or database!", e);
+        }
+    }
+
+    private Optional<FilesStorageNode> copyDirectoryRecursive(FilesStorageNode targetNode, FilesStorageNode destinationNode, String resolveConflictBy) throws Exception {
+        Path finalFilePath = null;
+        final String targetFileName = targetNode.getName();
+        final Path targetFilePath = this.rootPath.resolve(targetNode.getUrl());
+        final Path destinationPath = this.rootPath.resolve(destinationNode.getUrl());
+        Path destinationFinalPath = destinationPath.resolve(targetFileName);
+
+        if (Files.exists(destinationFinalPath)) {
+            switch (resolveConflictBy) {
+                case "merge":
+                    if (Files.isDirectory(targetFilePath) && Files.isDirectory(destinationFinalPath)) {
+                        break;
+                    }                    
+                case "rename":
+                    String modifiedFileName = null;
+                    Integer fileNameModifier = 1;
+
+                    do {
+                        modifiedFileName = String.format("%s_(%d)_", targetFileName, fileNameModifier++);
+                        destinationFinalPath = destinationPath.resolve(modifiedFileName);
+                    } while (Files.exists(destinationFinalPath));
+
+                    break;
+                case "ignore":
+                    return null;
+                default:
+                    throw new RuntimeException("(copyDirectory) Exception occurred: A file with the same name already exists in the specified directory: " + destinationFinalPath);
+            }
+        }
+
+        if (Files.isDirectory(targetFilePath)) {
+            finalFilePath = Files.createDirectory(destinationFinalPath);
+        } else {
+            finalFilePath = Files.copy(targetFilePath, destinationFinalPath);
+        }
+
+        if (finalFilePath == null) {
+            throw new RuntimeException("(copyDirectory) Exception occurred: Moving file failed spectacularily!");
+        }
+
+        FilesStorageNode newNode = new FilesStorageNode();
+
+        newNode.setParent(destinationNode);
+        newNode.setDescription(targetNode.getDescription());
+        newNode.setName(finalFilePath.getFileName().toString());
+        newNode.setIsDirectory(Files.isDirectory(finalFilePath));
+        newNode.setUrl(this.rootPath.relativize(finalFilePath).toString());
+
+        FilesStorageNode newCommitedNode = this.filesStorageNodeRepository.save(newNode);
+
+        if (newCommitedNode.getIsDirectory()) {
+            List<FilesStorageNode> targetChildNodes = this.filesStorageNodeRepository.findAllByParentIdAndSafeTrueOrderByIsDirectoryDescNameAsc(targetNode.getId());
+            List<FilesStorageNode> destinationChildNodes = new ArrayList<>();
+
+            for (FilesStorageNode targetChild : targetChildNodes) {
+                Optional<FilesStorageNode> optionalNewChildNode = copyDirectoryRecursive(targetChild, newCommitedNode, resolveConflictBy);
+
+                if (optionalNewChildNode.isPresent()) {
+                    destinationChildNodes.add(optionalNewChildNode.get());
+                }
+            }
+
+            newCommitedNode.setChildNodes(destinationChildNodes);
+        }
+
+        return Optional.ofNullable(newCommitedNode);
+        //TODO: (copyDirectory) extensive testing needed!!!
+    }
+
+    public FilesStorageNode moveDirectory(UUID directoryid, UUID destinationId, String resolveConflictBy) throws Exception {
+        try {
+            if (directoryid == null) {
+                throw new RuntimeException("(moveDirectory) Exception occurred: Directory ID cannot be null!");
+            }
+
+            Optional<FilesStorageNode> optionalTargetNode = this.filesStorageNodeRepository.findById(directoryid);
+            if (!optionalTargetNode.isPresent()) {
+                throw new RuntimeException("(moveDirectory) Exception occurred: Target node does not exist: " + directoryid);
+            }
+
+            FilesStorageNode targetNode = optionalTargetNode.get();
+            if (!targetNode.getIsDirectory()) {
+                throw new RuntimeException("(moveDirectory) Exception occurred: Target node is not a directory: " + directoryid);
+            }
+
+            Path validFilePath = this.rootPath.resolve(targetNode.getUrl());
+            if (!Files.exists(validFilePath)) {
+                targetNode.setPhysical(false);
+                this.filesStorageNodeRepository.save(targetNode);
+                throw new RuntimeException("(moveDirectory) Exception occurred: Could not read the directory!");
+            }
+
+            if (destinationId == null) {
+                throw new RuntimeException("(moveDirectory) Exception occurred: Destination directory ID cannot be null!");
+            }
+
+            Optional<FilesStorageNode> optionalDestinationNode = this.filesStorageNodeRepository.findById(destinationId);
+            if (!optionalDestinationNode.isPresent()) {
+                throw new RuntimeException("(moveDirectory) Exception occurred: Target node does not exist: " + destinationId);
+            }
+
+            FilesStorageNode destinationNode = optionalDestinationNode.get();
+            if (destinationNode.getIsDirectory()) {
+                throw new RuntimeException("(moveDirectory) Exception occurred: Target node is a directory: " + destinationId);
+            }
+
+            Path validDestinationPath = this.rootPath.resolve(destinationNode.getUrl());
+            if (!Files.exists(validDestinationPath)) {
+                destinationNode.setPhysical(false);
+                this.filesStorageNodeRepository.save(destinationNode);
+                throw new RuntimeException("(moveDirectory) Exception occurred: Could not read the parent!");
+            }
+
+            Optional<FilesStorageNode> optionalNewDirectoryNode = moveDirectoryRecursive(targetNode, destinationNode, resolveConflictBy);
+            if (!optionalNewDirectoryNode.isPresent()) {
+                throw new RuntimeException("(moveDirectory) Exception occurred: A directory with the same name already exists in the specified directory: " + validDestinationPath);
+            }
+
+            return optionalNewDirectoryNode.get();
+        } catch (Exception e) {
+            throw new RuntimeException("(moveDirectory) Exception occurred: Could not commit file move to disk or database!", e);
+        }
+    }
+
+    private Optional<FilesStorageNode> moveDirectoryRecursive(FilesStorageNode targetNode, FilesStorageNode destinationNode, String resolveConflictBy) throws Exception {
+        Path finalFilePath = null;
+        final String targetFileName = targetNode.getName();
+        final Path targetFilePath = this.rootPath.resolve(targetNode.getUrl());
+        final Path destinationPath = this.rootPath.resolve(destinationNode.getUrl());
+        Path destinationFinalPath = destinationPath.resolve(targetFileName);
+
+        if (Files.exists(destinationFinalPath)) {
+            switch (resolveConflictBy) {
+                case "merge":
+                    if (Files.isDirectory(targetFilePath) && Files.isDirectory(destinationFinalPath)) {
+                        break;
+                    }                    
+                case "rename":
+                    String modifiedFileName = null;
+                    Integer fileNameModifier = 1;
+
+                    do {
+                        modifiedFileName = String.format("%s_(%d)_", targetFileName, fileNameModifier++);
+                        destinationFinalPath = destinationPath.resolve(modifiedFileName);
+                    } while (Files.exists(destinationFinalPath));
+
+                    break;
+                case "ignore":
+                    return null;
+                default:
+                    throw new RuntimeException("(moveDirectory) Exception occurred: A file with the same name already exists in the specified directory: " + destinationFinalPath);
+            }
+        }
+
+        if (Files.isDirectory(targetFilePath)) {
+            finalFilePath = Files.createDirectory(destinationFinalPath);
+        } else {
+            finalFilePath = Files.move(targetFilePath, destinationFinalPath);
+        }
+
+        if (finalFilePath == null) {
+            throw new RuntimeException("(moveDirectory) Exception occurred: Moving file failed spectacularily!");
+        }
+
+        targetNode.setParent(destinationNode);
+        targetNode.setName(finalFilePath.getFileName().toString());
+        targetNode.setUrl(this.rootPath.relativize(finalFilePath).toString());
+
+        FilesStorageNode newCommitedNode = this.filesStorageNodeRepository.save(targetNode);
+
+        if (newCommitedNode.getIsDirectory()) {
+            List<FilesStorageNode> targetChildNodes = this.filesStorageNodeRepository.findAllByParentIdAndSafeTrueOrderByIsDirectoryDescNameAsc(targetNode.getId());
+            List<FilesStorageNode> destinationChildNodes = new ArrayList<>();
+
+            for (FilesStorageNode targetChild : targetChildNodes) {
+                Optional<FilesStorageNode> optionalNewChildNode = moveDirectoryRecursive(targetChild, newCommitedNode, resolveConflictBy);
+
+                if (optionalNewChildNode.isPresent()) {
+                    destinationChildNodes.add(optionalNewChildNode.get());
+                }
+            }
+
+            newCommitedNode.setChildNodes(destinationChildNodes);
+            FileSystemUtils.deleteRecursively(targetFilePath);
+        }
+
+        return Optional.ofNullable(newCommitedNode);
+        //TODO: (moveDirectory) extensive testing needed!!!
     }
 
     public FilesStorageNode editDirectory(UUID directoryId, String directoryName, String description) throws Exception {
