@@ -578,8 +578,35 @@ public class FilesStorageServiceImplementation implements FilesStorageService {
         if (Files.exists(destinationFinalPath)) {
             switch (resolveConflictBy) {
                 case "merge":
-                    if (Files.isDirectory(targetFilePath) && Files.isDirectory(destinationFinalPath)) {
-                        break;
+                    if (Files.isDirectory(targetFilePath) && Files.exists(destinationFinalPath) && Files.isDirectory(destinationFinalPath)) {
+                        final Optional<FilesStorageNode> optionalFinalDestinationNode = this.filesStorageNodeRepository.findByParentIdAndName(destinationNode.getId(), destinationFinalPath.getFileName().toString());
+                        if (!optionalFinalDestinationNode.isPresent()) {
+                            throw new RuntimeException("(copyDirectory) Exception occurred: A file with the same name already exists in the specified directory but not in database: " + destinationFinalPath);
+                        }
+
+                        final FilesStorageNode finalDestinationNode = optionalFinalDestinationNode.get();
+                        final List<FilesStorageNode> targetChildNodes = this.filesStorageNodeRepository.findAllByParentIdAndSafeTrueOrderByIsDirectoryDescNameAsc(targetNode.getId());
+                        final List<FilesStorageNode> destinationChildNodes = this.filesStorageNodeRepository.findAllByParentIdAndSafeTrueOrderByIsDirectoryDescNameAsc(finalDestinationNode.getId());
+                        for (FilesStorageNode targetChild : targetChildNodes) {
+                            Optional<FilesStorageNode> optionalNewChildNode = copyDirectoryRecursive(targetChild, finalDestinationNode, resolveConflictBy);
+
+                            if (optionalNewChildNode.isPresent()) {
+                                destinationChildNodes.add(optionalNewChildNode.get());
+                            }
+                        }
+
+                        Collections.sort(destinationChildNodes, (node1, node2) -> {
+                            if (node1.getIsDirectory() && !node2.getIsDirectory()) {
+                                return -1;
+                            } else if (!node1.getIsDirectory() && node2.getIsDirectory()) {
+                                return 1;
+                            } else {
+                                return node1.getName().compareTo(node2.getName());
+                            }
+                        });
+
+                        finalDestinationNode.setChildNodes(destinationChildNodes);
+                        return Optional.ofNullable(finalDestinationNode);
                     }                    
                 case "rename":
                     String modifiedFileName = null;
@@ -702,9 +729,36 @@ public class FilesStorageServiceImplementation implements FilesStorageService {
         if (Files.exists(destinationFinalPath)) {
             switch (resolveConflictBy) {
                 case "merge":
-                    if (Files.isDirectory(targetFilePath) && Files.isDirectory(destinationFinalPath)) {
-                        break;
-                    }                    
+                    if (Files.isDirectory(targetFilePath) && Files.exists(destinationFinalPath) && Files.isDirectory(destinationFinalPath)) {
+                        final Optional<FilesStorageNode> optionalFinalDestinationNode = this.filesStorageNodeRepository.findByParentIdAndName(destinationNode.getId(), destinationFinalPath.getFileName().toString());
+                        if (!optionalFinalDestinationNode.isPresent()) {
+                            throw new RuntimeException("(moveDirectory) Exception occurred: A file with the same name already exists in the specified directory but not in database: " + destinationFinalPath);
+                        }
+
+                        final FilesStorageNode finalDestinationNode = optionalFinalDestinationNode.get();
+                        final List<FilesStorageNode> targetChildNodes = this.filesStorageNodeRepository.findAllByParentIdAndSafeTrueOrderByIsDirectoryDescNameAsc(targetNode.getId());
+                        final List<FilesStorageNode> destinationChildNodes = this.filesStorageNodeRepository.findAllByParentIdAndSafeTrueOrderByIsDirectoryDescNameAsc(finalDestinationNode.getId());
+                        for (FilesStorageNode targetChild : targetChildNodes) {
+                            Optional<FilesStorageNode> optionalNewChildNode = moveDirectoryRecursive(targetChild, finalDestinationNode, resolveConflictBy);
+
+                            if (optionalNewChildNode.isPresent()) {
+                                destinationChildNodes.add(optionalNewChildNode.get());
+                            }
+                        }
+
+                        Collections.sort(destinationChildNodes, (node1, node2) -> {
+                            if (node1.getIsDirectory() && !node2.getIsDirectory()) {
+                                return -1;
+                            } else if (!node1.getIsDirectory() && node2.getIsDirectory()) {
+                                return 1;
+                            } else {
+                                return node1.getName().compareTo(node2.getName());
+                            }
+                        });
+
+                        finalDestinationNode.setChildNodes(destinationChildNodes);
+                        return Optional.ofNullable(finalDestinationNode);
+                    }                       
                 case "rename":
                     String modifiedFileName = null;
                     Integer fileNameModifier = 1;

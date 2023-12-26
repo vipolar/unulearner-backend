@@ -6,6 +6,7 @@ import org.springframework.data.repository.query.Param;
 
 import java.util.UUID;
 import java.util.List;
+import java.util.Optional;
 
 public interface FilesStorageNodeRepository extends JpaRepository<FilesStorageNode, UUID>  {
     FilesStorageNode getByParentIsNull(); // Finds the root dirctory (it is the only one that is allowed to have a NULL parent!!!)
@@ -16,4 +17,6 @@ public interface FilesStorageNodeRepository extends JpaRepository<FilesStorageNo
     //List<FilesStorageNode> findAllByParentIdAndMalignantFalseOrderByIsDirectoryDescNameAsc(@Param("parentId") Long parentId); // Includes unconfirmed, unreadable, and unreachable
     List<FilesStorageNode> findAllByParentIdAndSafeTrueOrderByIsDirectoryDescNameAsc(@Param("parentId") UUID parentId);
     List<FilesStorageNode> findAllByParentIdOrderByIsDirectoryDescNameAsc(@Param("parentId") UUID parentId);
+
+    Optional<FilesStorageNode> findByParentIdAndName(@Param("parentId") UUID parentId, @Param("name") String name);
 }
