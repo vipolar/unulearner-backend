@@ -327,6 +327,8 @@ public class FilesStorageServiceImplementation implements FilesStorageService {
         Boolean isMarkedForUpdate = null;
 
         try {
+            Path targetPath = null;
+            Resource resource = null;
             Path parentPath = this.rootPath;
             FilesStorageNode targetNode = null;
             String validFileName = nameValidator(fileName);
@@ -338,14 +340,40 @@ public class FilesStorageServiceImplementation implements FilesStorageService {
 
             Optional<FilesStorageNode> optionalFileNode = this.filesStorageNodeRepository.findById(fileId);
 
-            if (!optionalFileNode.isPresent()) {
+            if (optionalFileNode.isPresent()) {
+                targetNode = optionalFileNode.get();
+            } else {
                 throw new RuntimeException("(editFile) Exception occurred: File does not exist: " + fileId);
             }
 
-            targetNode = optionalFileNode.get();
+            if (!targetNode.getPhysical()) {
+                throw new RuntimeException("(editFile) Exception occurred: Cannot edit non-physical node: " + fileId);
+            }
+
+            if (!targetNode.getReadable()) {
+                throw new RuntimeException("(editFile) Exception occurred: Cannot edit unreadable node: " + fileId);
+            }
+
+            if (targetNode.getMalignant()) {
+                throw new RuntimeException("(editFile) Exception occurred: Cannot edit malignant node: " + fileId);
+            }
 
             if (targetNode.getIsDirectory()) {
                 throw new RuntimeException("(editFile) Exception occurred: Target node is not a file: " + fileId);
+            }
+
+            targetPath = this.rootPath.resolve(targetNode.getUrl());
+            if (targetPath == null || !Files.exists(targetPath)) {
+                targetNode.setPhysical(false);
+                this.filesStorageNodeRepository.save(targetNode);
+                throw new RuntimeException("(editFile) Exception occurred: File does not exist on disk: " + targetPath);
+            }
+
+            resource = new UrlResource(targetPath.toUri());
+            if (!(resource.exists() || resource.isReadable())) {
+                targetNode.setReadable(false);
+                this.filesStorageNodeRepository.save(targetNode);
+                throw new RuntimeException("(editFile) Exception occurred: Could not read the file!");
             }
 
             if (!targetNode.getName().equals(fileName)) {
@@ -371,6 +399,11 @@ public class FilesStorageServiceImplementation implements FilesStorageService {
 
             if (!targetNode.getDescription().equals(description)) {
                 targetNode.setDescription(description);
+                isMarkedForUpdate = true;
+            }
+
+            if (!targetNode.getConfirmed() && targetNode.getPhysical() && targetNode.getReadable()) {
+                targetNode.setConfirmed(true);
                 isMarkedForUpdate = true;
             }
 
@@ -446,15 +479,11 @@ public class FilesStorageServiceImplementation implements FilesStorageService {
             }
 
             targetPath = this.rootPath.resolve(targetNode.getUrl());
-
-            if (targetPath == null || !Files.exists(targetPath)) {
-                targetNode.setPhysical(false);
-                this.filesStorageNodeRepository.save(targetNode);
-                throw new RuntimeException("(deleteFile) Exception occurred: File does not exist on disk: " + targetPath);
+            if (targetPath != null && Files.exists(targetPath)) {
+                Files.delete(targetPath);
             }
 
             this.filesStorageNodeRepository.delete(targetNode);
-            Files.delete(targetPath);
         } catch (Exception e) {
             throw new RuntimeException("(deleteFile) Exception occurred: Could not delete file!", e);
         }
@@ -607,7 +636,7 @@ public class FilesStorageServiceImplementation implements FilesStorageService {
 
                         finalDestinationNode.setChildNodes(destinationChildNodes);
                         return Optional.ofNullable(finalDestinationNode);
-                    }                    
+                    }
                 case "rename":
                     String modifiedFileName = null;
                     Integer fileNameModifier = 1;
@@ -758,7 +787,7 @@ public class FilesStorageServiceImplementation implements FilesStorageService {
 
                         finalDestinationNode.setChildNodes(destinationChildNodes);
                         return Optional.ofNullable(finalDestinationNode);
-                    }                       
+                    }
                 case "rename":
                     String modifiedFileName = null;
                     Integer fileNameModifier = 1;
@@ -816,6 +845,8 @@ public class FilesStorageServiceImplementation implements FilesStorageService {
         Boolean isMarkedForUpdate = null;
 
         try {
+            Path targetPath = null;
+            Resource resource = null;
             Path parentPath = this.rootPath;
             FilesStorageNode targetNode = null;
             String validDirectoryName = nameValidator(directoryName);
@@ -827,14 +858,40 @@ public class FilesStorageServiceImplementation implements FilesStorageService {
 
             Optional<FilesStorageNode> optionalFileNode = this.filesStorageNodeRepository.findById(directoryId);
 
-            if (!optionalFileNode.isPresent()) {
+            if (optionalFileNode.isPresent()) {
+                targetNode = optionalFileNode.get();
+            } else {
                 throw new RuntimeException("(editDirectory) Exception occurred: Directory does not exist: " + directoryId);
             }
 
-            targetNode = optionalFileNode.get();
+            if (!targetNode.getPhysical()) {
+                throw new RuntimeException("(editDirectory) Exception occurred: Cannot edit non-physical node: " + directoryId);
+            }
+
+            if (!targetNode.getReadable()) {
+                throw new RuntimeException("(editDirectory) Exception occurred: Cannot edit unreadable node: " + directoryId);
+            }
+
+            if (targetNode.getMalignant()) {
+                throw new RuntimeException("(editDirectory) Exception occurred: Cannot edit malignant node: " + directoryId);
+            }
 
             if (!targetNode.getIsDirectory()) {
                 throw new RuntimeException("(editDirectory) Exception occurred: Target node is not a directory: " + directoryId);
+            }
+
+            targetPath = this.rootPath.resolve(targetNode.getUrl());
+            if (targetPath == null || !Files.exists(targetPath)) {
+                targetNode.setPhysical(false);
+                this.filesStorageNodeRepository.save(targetNode);
+                throw new RuntimeException("(editDirectory) Exception occurred: Directory does not exist on disk: " + targetPath);
+            }
+
+            resource = new UrlResource(targetPath.toUri());
+            if (!(resource.exists() || resource.isReadable())) {
+                targetNode.setReadable(false);
+                this.filesStorageNodeRepository.save(targetNode);
+                throw new RuntimeException("(editDirectory) Exception occurred: Could not read the directory!");
             }
 
             if (!targetNode.getName().equals(directoryName)) {
@@ -860,6 +917,11 @@ public class FilesStorageServiceImplementation implements FilesStorageService {
 
             if (!targetNode.getDescription().equals(description)) {
                 targetNode.setDescription(description);
+                isMarkedForUpdate = true;
+            }
+
+            if (!targetNode.getConfirmed() && targetNode.getPhysical() && targetNode.getReadable()) {
+                targetNode.setConfirmed(true);
                 isMarkedForUpdate = true;
             }
 
@@ -1077,15 +1139,11 @@ public class FilesStorageServiceImplementation implements FilesStorageService {
             }
 
             targetPath = this.rootPath.resolve(targetNode.getUrl());
-
-            if (targetPath == null || !Files.exists(targetPath)) {
-                targetNode.setPhysical(false);
-                this.filesStorageNodeRepository.save(targetNode);
-                throw new RuntimeException("(deleteDirectory) Exception occurred: Directory does not exist on disk: " + targetPath);
+            if (targetPath != null && Files.exists(targetPath)) {
+                FileSystemUtils.deleteRecursively(targetPath);
             }
 
             this.filesStorageNodeRepository.delete(targetNode);
-            FileSystemUtils.deleteRecursively(targetPath);
         } catch (Exception e) {
             throw new RuntimeException("(deleteDirectory) Exception occurred: Could not delete directory!", e);
         }
