@@ -1,10 +1,12 @@
 #HELP.md
 target/
-uploads/
 .repository/
 !.mvn/wrapper/maven-wrapper.jar
 !**/src/main/**/target/
 !**/src/test/**/target/
+
+### Storage ###
+uploads/
 
 ### STS ###
 .apt_generated

@@ -17,6 +17,8 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.web.bind.annotation.RestController;
 //import org.springframework.beans.factory.annotation.Autowired;
 
+import com.unulearner.backend.storage.properties.StorageProperties;
+
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -25,8 +27,6 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RequestMapping;
-
-import com.unulearner.backend.configuration.properties.StorageProperties;
 
 @RestController
 @RequestMapping(path="/content/english/wordlist")
@@ -64,6 +64,7 @@ public class EnglishWordlistRepositoryController {
     public ResponseEntity<String> importWordsFromFile (@RequestBody String wordlist) {
         try {
             // Read the file from the specified path
+            //TODO: this.storageProperties shouldn't be here!!! only the file URL!!!
             String wordliURI = this.storageProperties.getRootDirectory() + wordlist;
             Path file = Paths.get(wordliURI);
 
