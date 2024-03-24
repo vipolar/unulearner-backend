@@ -43,7 +43,7 @@ public class StorageTree {
             buildStorageTree();
         } catch (Exception buildStorageTreeException) {
             /* Exception is re-thrown and left unhandled! App shutdown is THE expected behavior! */
-            String errorMessage = String.format("Failed to initialize storage tree!");
+            String errorMessage = "Failed to initialize storage tree!".formatted();
             throw new RuntimeException(errorMessage, buildStorageTreeException);
         }
     }
@@ -90,7 +90,7 @@ public class StorageTree {
 
             rootDirectoryThreeHashMap.put(rootStorageTreeNode.getId(), rootStorageTreeNode.getOnDiskURL(), rootStorageTreeNode.getAbsolutePath(), rootStorageTreeNode);
         } catch (Exception StorageTreeInitializationError) {
-            errorMessage = String.format("Failed to initialize the '%s' directory storage tree!", rootDirectoryName);
+            errorMessage = "Failed to initialize the '%s' directory storage tree!".formatted(rootDirectoryName);
             throw new StorageServiceException(errorMessage, StorageTreeInitializationError);
         }
 
@@ -108,7 +108,7 @@ public class StorageTree {
 
                     try {
                         if (!StoragePath.isValidFile(filePath)) {
-                            exceptionMessage = String.format("File '%s' cannot be accessed!", filePath.getFileName().toString());
+                            exceptionMessage = "File '%s' cannot be accessed!".formatted(filePath.getFileName().toString());
                             throw new StorageServiceException(exceptionMessage);
                         }
 
@@ -118,7 +118,7 @@ public class StorageTree {
                             targetStorageTreeNode = nullableStorageTreeNode.get();
 
                             if (!rootDirectoryNodeStack.isEmpty() && !rootDirectoryNodeStack.get(rootDirectoryNodeStack.size() - 1).getId().equals(targetStorageTreeNode.getParent().getId())) {
-                                exceptionMessage = String.format("File '%s' is a child of '%s' directory yet the relationship is not reciprocated on the persistent level!", targetStorageTreeNode.getOnDiskURL(), rootDirectoryNodeStack.get(rootDirectoryNodeStack.size() - 1));
+                                exceptionMessage = "File '%s' is a child of '%s' directory yet the relationship is not reciprocated on the persistent level!".formatted(targetStorageTreeNode.getOnDiskURL(), rootDirectoryNodeStack.get(rootDirectoryNodeStack.size() - 1));
                                 throw new StorageServiceException(exceptionMessage);
                             }
                         } else {
@@ -142,14 +142,14 @@ public class StorageTree {
                             }
 
                             if (rootDirectoryThreeHashMap.put(targetStorageTreeNode.getId(), targetStorageTreeNode.getOnDiskURL(), targetStorageTreeNode.getAbsolutePath(), targetStorageTreeNode) != null) {
-                                exceptionMessage = String.format("File node '%s' is already present on the hashmap!", targetStorageTreeNodeURL);
+                                exceptionMessage = "File node '%s' is already present on the hashmap!".formatted(targetStorageTreeNodeURL);
                                 throw new StorageServiceException(exceptionMessage);
                             }
                         }
 
                         targetStorageTreeNode.setIsAccessible(targetStorageTreeNodeIsAccessible);
                     } catch (Exception retrieveStorageTreeNodeException) {
-                        exceptionMessage = String.format("Failed to add file '%s' to the storage tree! Error: %s", targetStorageTreeNodeURL, retrieveStorageTreeNodeException.getMessage());
+                        exceptionMessage = "Failed to add file '%s' to the storage tree! Error: %s".formatted(targetStorageTreeNodeURL, retrieveStorageTreeNodeException.getMessage());
                         //TODO: LOG(exceptionMessage);
                         retrieveStorageTreeNodeException.printStackTrace();
                         return FileVisitResult.CONTINUE;
@@ -175,7 +175,7 @@ public class StorageTree {
                         }
 
                         if (!StoragePath.isValidDirectory(directoryPath)) {
-                            exceptionMessage = String.format("Directory '%s' cannot be accessed!", directoryPath.getFileName().toString());
+                            exceptionMessage = "Directory '%s' cannot be accessed!".formatted(directoryPath.getFileName().toString());
                             throw new StorageServiceException(exceptionMessage);
                         }
 
@@ -185,7 +185,7 @@ public class StorageTree {
                             targetStorageTreeNode = nullableStorageTreeNode.get();
                             
                             if (!rootDirectoryNodeStack.isEmpty() && !rootDirectoryNodeStack.get(rootDirectoryNodeStack.size() - 1).getId().equals(targetStorageTreeNode.getParent().getId())) {
-                                exceptionMessage = String.format("Directory '%s' is a child of '%s' directory yet the relationship is not reciprocated on the persistent level!", targetStorageTreeNode.getOnDiskURL(), rootDirectoryNodeStack.get(rootDirectoryNodeStack.size() - 1));
+                                exceptionMessage = "Directory '%s' is a child of '%s' directory yet the relationship is not reciprocated on the persistent level!".formatted(targetStorageTreeNode.getOnDiskURL(), rootDirectoryNodeStack.get(rootDirectoryNodeStack.size() - 1));
                                 throw new StorageServiceException(exceptionMessage);
                             }
 
@@ -212,7 +212,7 @@ public class StorageTree {
                             }
 
                             if (rootDirectoryThreeHashMap.put(targetStorageTreeNode.getId(), targetStorageTreeNode.getOnDiskURL(), targetStorageTreeNode.getAbsolutePath(), targetStorageTreeNode) != null) {
-                                exceptionMessage = String.format("Directory node '%s' is already present on the hashmap!", targetStorageTreeNodeURL);
+                                exceptionMessage = "Directory node '%s' is already present on the hashmap!".formatted(targetStorageTreeNodeURL);
                                 throw new StorageServiceException(exceptionMessage);
                             }
                         }
@@ -220,7 +220,7 @@ public class StorageTree {
                         targetStorageTreeNode.setIsAccessible(targetStorageTreeNodeIsAccessible);
                         rootDirectoryNodeStack.add(targetStorageTreeNode);
                     } catch (Exception retrieveStorageTreeNodeException) {
-                        exceptionMessage = String.format("Failed to add directory '%s' to the storage tree! Error: %s", targetStorageTreeNodeURL, retrieveStorageTreeNodeException.getMessage());
+                        exceptionMessage = "Failed to add directory '%s' to the storage tree! Error: %s".formatted(targetStorageTreeNodeURL, retrieveStorageTreeNodeException.getMessage());
                         //TODO: LOG(exceptionMessage);
                         retrieveStorageTreeNodeException.printStackTrace();
                         return FileVisitResult.SKIP_SUBTREE;
@@ -243,7 +243,7 @@ public class StorageTree {
                             rootDirectoryNodeStack.remove(rootDirectoryNodeStack.size() - 1);
                         }
                     } catch (Exception retrieveStorageTreeNodeException) {
-                        exceptionMessage = String.format("Failed to close directory '%s'! Error: %s", rootDirectoryPath.relativize(directoryPath).toString(), retrieveStorageTreeNodeException.getMessage());
+                        exceptionMessage = "Failed to close directory '%s'! Error: %s".formatted(rootDirectoryPath.relativize(directoryPath).toString(), retrieveStorageTreeNodeException.getMessage());
                         //TODO: LOG(exceptionMessage);
                         retrieveStorageTreeNodeException.printStackTrace();
                         return FileVisitResult.CONTINUE;
@@ -261,7 +261,7 @@ public class StorageTree {
 
             rootStorageTreeNode.setChildren(rootDirectoryNodeStack.get(0).getChildren());
         } catch (Exception buildStorageTreeNodeException) {
-            errorMessage = String.format("Failed to build the '%s' directory storage tree!", rootDirectoryName);
+            errorMessage = "Failed to build the '%s' directory storage tree!".formatted(rootDirectoryName);
             throw new StorageServiceException(errorMessage, buildStorageTreeNodeException);
         }
 
@@ -317,12 +317,12 @@ public class StorageTree {
             switch (onConflict) {
                 case "overwrite":
                     if (Files.isDirectory(currentPath)) {
-                        errorMessage = String.format("Target '%s' is a directory, making the 'overwrite' flag not applicable!", currentName);
+                        errorMessage = "Target '%s' is a directory, making the 'overwrite' flag not applicable!".formatted(currentName);
                         throw new StorageServiceException(errorMessage);
                     }
 
                     if (Files.isDirectory(targetPath)) {
-                        errorMessage = String.format("Conflicting '%s' is a directory, making the 'overwrite' flag not applicable!", currentName);
+                        errorMessage = "Conflicting '%s' is a directory, making the 'overwrite' flag not applicable!".formatted(currentName);
                         throw new StorageServiceException(errorMessage);
                     }
 
@@ -331,12 +331,12 @@ public class StorageTree {
                     break;
                 case "merge":
                     if (!Files.isDirectory(currentPath)) {
-                        errorMessage = String.format("Target '%s' is not a directory, making the 'merge' flag not applicable!", currentName);
+                        errorMessage = "Target '%s' is not a directory, making the 'merge' flag not applicable!".formatted(currentName);
                         throw new StorageServiceException(errorMessage);
                     }
 
                     if (!Files.isDirectory(targetPath)) {
-                        errorMessage = String.format("Conflicting '%s' is not a directory, making the 'merge' flag not applicable!", currentName);
+                        errorMessage = "Conflicting '%s' is not a directory, making the 'merge' flag not applicable!".formatted(currentName);
                         throw new StorageServiceException(errorMessage);
                     }
 
@@ -374,15 +374,15 @@ public class StorageTree {
                             fileExtension = fileExtension.substring(1);
                         }
                     } else {
-                        errorMessage = String.format("Name '%s' does not match the regex pattern!", currentName);
+                        errorMessage = "Name '%s' does not match the regex pattern!".formatted(currentName);
                         throw new StorageServiceException(errorMessage);
                     }
 
                     while (baseNameModifier <= Integer.MAX_VALUE) {
                         if (fileExtension == null || fileExtension.isEmpty()) {
-                            temporaryName = String.format("%s (%s)", baseName, baseNameModifier);
+                            temporaryName = "%s (%s)".formatted(baseName, baseNameModifier);
                         } else {
-                            temporaryName = String.format("%s (%s).%s", baseName, baseNameModifier, fileExtension);
+                            temporaryName = "%s (%s).%s".formatted(baseName, baseNameModifier, fileExtension);
                         }
 
                         temporaryPath = destinationPath.resolve(temporaryName);
@@ -398,14 +398,14 @@ public class StorageTree {
                     }
 
                     if (finalStorageTreeNodePath == null) {
-                        errorMessage = String.format("Do you seriously intend to tell me that '%s' and its other %d iterations already exist on disk? In '%s' directory? All there? Together?", currentName, Integer.MAX_VALUE, destinationName);
+                        errorMessage = "Do you seriously intend to tell me that '%s' and its other %d iterations already exist on disk? In '%s' directory? All there? Together?".formatted(currentName, Integer.MAX_VALUE, destinationName);
                         throw new StorageServiceException(errorMessage);
                     }
 
                     break;
                 case "ignore":
                 default:
-                    errorMessage = String.format("%s '%s' already exists in the '%s' directory!", Files.isDirectory(targetPath) ? "Directory" : "File", currentName, destinationName);
+                    errorMessage = "%s '%s' already exists in the '%s' directory!".formatted(Files.isDirectory(targetPath) ? "Directory" : "File", currentName, destinationName);
                     throw new FileAlreadyExistsException(errorMessage);
             }
         }
@@ -429,7 +429,7 @@ public class StorageTree {
             //TODO: appropriate checks!!!
             return commitedStorageTreeNode;
         } else {
-            errorMessage = String.format("Failed to commit the %s '%s' to storage!", Files.isDirectory(targetPath) ? "directory" : "file", currentName);
+            errorMessage = "Failed to commit the %s '%s' to storage!".formatted(Files.isDirectory(targetPath) ? "directory" : "file", currentName);
             throw new StorageServiceException(errorMessage);
         }
     }

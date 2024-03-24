@@ -20,6 +20,7 @@ import java.nio.file.FileAlreadyExistsException;
 import org.springframework.beans.factory.annotation.Autowired;
 
 import com.unulearner.backend.storage.StorageTreeNode;
+import com.unulearner.backend.storage.responses.StorageServiceError;
 import com.unulearner.backend.storage.responses.StorageServiceResponse;
 
 @Controller
@@ -28,8 +29,13 @@ public class StorageServiceController {
 
     @Autowired
     StorageServiceImplementation storageService;
-
     private final Boolean debugPrintStackTrace = true;
+
+    //**********************************************************//
+    //*                                                        *//
+    //*   From here on, it be all about THEM single files!     *//
+    //*                                                        *//
+    //**********************************************************//
 
     /**
      * @param content
@@ -40,14 +46,15 @@ public class StorageServiceController {
      */
     @PostMapping("/file/add/to/{destinationDirectoryID}")
     public ResponseEntity<?> fileUpload(
-        @RequestParam(name = "content") MultipartFile content,
-        @RequestParam(name = "description") String description,
-        @PathVariable("destinationDirectoryID") UUID destinationDirectoryID,
+        @RequestParam MultipartFile content,
+        @RequestParam String description,
+        @PathVariable UUID destinationDirectoryID,
         @RequestParam(name = "conflict", defaultValue = "default", required = false) String onConflict) {
 
         String errorMessage = null;
         StorageTreeNode returnValue = null;
         HttpStatus status = HttpStatus.CREATED;
+        //TODO: rework!
 
         try {
             returnValue = storageService.createFileStorageTreeNode(content, description, destinationDirectoryID, onConflict);
@@ -60,7 +67,7 @@ public class StorageServiceController {
             }
 
             if (debugPrintStackTrace) {fileUploadException.printStackTrace();}
-            errorMessage = String.format("Failed to upload file '%s' to '%s' directory! Error: %s", content.getOriginalFilename(), destinationDirectoryID.toString(), fileUploadException.getMessage());
+            errorMessage = "Failed to upload file '%s' to '%s' directory! Error: %s".formatted(content.getOriginalFilename(), destinationDirectoryID.toString(), fileUploadException.getMessage());
             return new ResponseEntity<>(new StorageServiceResponse(errorMessage), status);
         }
     }
@@ -77,13 +84,14 @@ public class StorageServiceController {
     public ResponseEntity<?> fileUpdate(
         @RequestParam(name = "name") String updatedName,
         @RequestParam(name = "description") String updatedDescription,
-        @RequestParam(name = "content", required = false) MultipartFile content,
-        @PathVariable("targetFileID") UUID targetFileID,
+        @RequestParam(required = false) MultipartFile content,
+        @PathVariable UUID targetFileID,
         @RequestParam(name = "conflict", defaultValue = "default", required = false) String onConflict) {
 
         String errorMessage = null;
         StorageTreeNode returnValue = null;
         HttpStatus status = HttpStatus.OK;
+        //TODO: rework!
 
         try {
             returnValue = storageService.updateFileStorageTreeNode(content, updatedName, updatedDescription, targetFileID, onConflict);
@@ -96,124 +104,105 @@ public class StorageServiceController {
             }
 
             if (debugPrintStackTrace) {fileUpdateException.printStackTrace();}
-            errorMessage = String.format("Failed to update '%s' file! Error: %s", targetFileID.toString(), fileUpdateException.getMessage());
+            errorMessage = "Failed to update '%s' file! Error: %s".formatted(targetFileID.toString(), fileUpdateException.getMessage());
             return new ResponseEntity<>(new StorageServiceResponse(errorMessage), status);
         }
     }
 
     /**
-     * @param targetFileID
-     * @param destinationDirectoryID
-     * @param onConflict
-     * @return
+     * @param targetFileID UUID of the file to copy
+     * @param destinationDirectoryID UUID of the directory to copy to
+     * @return <b>ResponseEntity</b> wrapping a <b>StorageServiceResponse</b> containing the appropriate <b><i>StorageTreeNode</b></i> or a <b>StorageServiceError</b> containing the <i><b>error message</b></i>
      */
-    @PostMapping("/file/copy/{targetFileID}/to/{destinationDirectoryID}")
-    public ResponseEntity<?> fileCopy(
-        @PathVariable("targetFileID") UUID targetFileID,
-        @PathVariable("destinationDirectoryID") UUID destinationDirectoryID,
-        @RequestParam(name = "conflict", defaultValue = "default", required = false) String onConflict) {
-
-        String errorMessage = null;
-        StorageTreeNode returnValue = null;
-        HttpStatus status = HttpStatus.OK;
+    @PostMapping("/copy/file/{targetFileID}/to/{destinationDirectoryID}")
+    public ResponseEntity<?> copyFile(
+        @PathVariable UUID targetFileID,
+        @PathVariable UUID destinationDirectoryID) {
 
         try {
-            returnValue = storageService.transferFileStorageTreeNode(targetFileID, destinationDirectoryID, true, onConflict);
-            return new ResponseEntity<>(returnValue, status);
-        } catch (Exception fileCopyException) {
-            if (fileCopyException instanceof FileAlreadyExistsException) {
-                status = HttpStatus.CONFLICT;
-            } else {
-                status = HttpStatus.EXPECTATION_FAILED;
+            final StorageServiceResponse response = storageService.transferFileStorageTreeNode(targetFileID, destinationDirectoryID, true);
+            return new ResponseEntity<StorageServiceResponse>(response, response.getStatus());
+        } catch (Exception exception) {
+            if (debugPrintStackTrace) {
+                exception.printStackTrace();
             }
 
-            if (debugPrintStackTrace) {fileCopyException.printStackTrace();}
-            errorMessage = String.format("Failed to copy file '%s' to '%s' directory! Error: %s", targetFileID.toString(), destinationDirectoryID.toString(), fileCopyException.getMessage());
-            return new ResponseEntity<>(new StorageServiceResponse(errorMessage), status);
+            final StorageServiceError error = new StorageServiceError("Failed to copy file '%s' to '%s' directory! Error: %s".formatted(targetFileID, destinationDirectoryID, exception.getMessage()));
+            return new ResponseEntity<StorageServiceError>(error, HttpStatus.INTERNAL_SERVER_ERROR);
         }
     }
 
     /**
-     * @param targetFileID
-     * @param destinationDirectoryID
-     * @param onConflict
-     * @return
+     * @param targetFileID UUID of the file to move
+     * @param destinationDirectoryID UUID of the directory to move to
+     * @return <b>ResponseEntity</b> wrapping a <b>StorageServiceResponse</b> containing the appropriate <b><i>StorageTreeNode</b></i> or a <b>StorageServiceError</b> containing the <i><b>error message</b></i>
      */
-    @PostMapping("/file/move/{targetFileID}/to/{destinationDirectoryID}")
-    public ResponseEntity<?> fileMove(
-        @PathVariable("targetFileID") UUID targetFileID,
-        @PathVariable("destinationDirectoryID") UUID destinationDirectoryID,
-        @RequestParam(name = "conflict", defaultValue = "default", required = false) String onConflict) {
-
-        String errorMessage = null;
-        StorageTreeNode returnValue = null;
-        HttpStatus status = HttpStatus.OK;
+    @PostMapping("/move/file/{targetFileID}/to/{destinationDirectoryID}")
+    public ResponseEntity<?> moveFile(
+        @PathVariable UUID targetFileID,
+        @PathVariable UUID destinationDirectoryID) {
 
         try {
-            returnValue = storageService.transferFileStorageTreeNode(targetFileID, destinationDirectoryID, false, onConflict);
-            return new ResponseEntity<>(returnValue, status);
-        } catch (Exception fileMoveException) {
-            if (fileMoveException instanceof FileAlreadyExistsException) {
-                status = HttpStatus.CONFLICT;
-            } else {
-                status = HttpStatus.EXPECTATION_FAILED;
+            final StorageServiceResponse response = storageService.transferFileStorageTreeNode(targetFileID, destinationDirectoryID, false);
+            return new ResponseEntity<StorageServiceResponse>(response, response.getStatus());
+        } catch (Exception exception) {
+            if (debugPrintStackTrace) {
+                exception.printStackTrace();
             }
 
-            if (debugPrintStackTrace) {fileMoveException.printStackTrace();}
-            errorMessage = String.format("Failed to move file '%s' to '%s' directory! Error: %s", targetFileID.toString(), destinationDirectoryID.toString(), fileMoveException.getMessage());
-            return new ResponseEntity<>(new StorageServiceResponse(errorMessage), status);
+            final StorageServiceError error = new StorageServiceError("Failed to move file '%s' to '%s' directory! Error: %s".formatted(targetFileID, destinationDirectoryID, exception.getMessage()));
+            return new ResponseEntity<StorageServiceError>(error, HttpStatus.INTERNAL_SERVER_ERROR);
         }
     }
 
     /**
-     * @param targetFileID
-     * @return
+     * @param targetFileID UUID of the file to download
+     * @return <b>ResponseEntity</b> wrapping a <b>StorageServiceResponse</b> containing the appropriate <b><i>StorageTreeNode</b></i> or a <b>StorageServiceError</b> containing the <i><b>error message</b></i>
      */
-    @ResponseBody
-    @GetMapping("/file/download/{targetFileID}")
-    public ResponseEntity<?> fileDownload(
-        @PathVariable("targetFileID") UUID targetFileID) {
-
-        String errorMessage = null;
-        Resource returnValue = null;
-        HttpStatus status = HttpStatus.OK;
+    @GetMapping("/download/file/{targetFileID}")
+    public ResponseEntity<?> downloadFile(
+        @PathVariable UUID targetFileID) {
 
         try {
-            returnValue = storageService.downloadFileStorageTreeNode(targetFileID);
-            return ResponseEntity.ok().header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + returnValue.getFilename() + "\"").body(returnValue);
-        } catch (Exception fileDownloadException) {
-            status = HttpStatus.EXPECTATION_FAILED;
+            final StorageServiceResponse response = new StorageServiceResponse("TODO");
+            //storageService.downloadFileStorageTreeNode(targetFileID); TODO: this!
+            return new ResponseEntity<StorageServiceResponse>(response, response.getStatus());
+        } catch (Exception exception) {
+            if (debugPrintStackTrace) {
+                exception.printStackTrace();
+            }
 
-            if (debugPrintStackTrace) {fileDownloadException.printStackTrace();}
-            errorMessage = String.format("Failed to download file '%s' from the permanent storage! Error: %s", targetFileID.toString(), fileDownloadException.getMessage());
-            return new ResponseEntity<>(new StorageServiceResponse(errorMessage), status);
+            final StorageServiceError error = new StorageServiceError("File '%s' could not be download: %s".formatted(targetFileID.toString(), exception.getMessage()));
+            return new ResponseEntity<StorageServiceError>(error, HttpStatus.INTERNAL_SERVER_ERROR);
         }
     }
 
     /**
-     * @param targetFileID
-     * @return
+     * @param targetFileID UUID of the file to delete
+     * @return <b>ResponseEntity</b> wrapping a <b>StorageServiceResponse</b> containing the appropriate <b><i>StorageTreeNode</b></i> or a <b>StorageServiceError</b> containing the <i><b>error message</b></i>
      */
-    @DeleteMapping("/file/delete/{targetFileID}")
-    public ResponseEntity<?> fileDelete(
-        @PathVariable("targetFileID") UUID targetFileID) {
-
-        String errorMessage = null;
-        String successMessage = null;
-        HttpStatus status = HttpStatus.OK;
+    @DeleteMapping("/delete/file/{targetFileID}")
+    public ResponseEntity<?> deleteFile(
+        @PathVariable UUID targetFileID) {
 
         try {
-            storageService.deleteFileStorageTreeNode(targetFileID);
-            successMessage = String.format("File '%s' removed successfully!", targetFileID.toString());
-            return new ResponseEntity<>(new StorageServiceResponse(successMessage), status);
-        } catch (Exception fileDeleteException) {
-            status = HttpStatus.EXPECTATION_FAILED;
+            final StorageServiceResponse response = storageService.deleteFileStorageTreeNode(targetFileID);
+            return new ResponseEntity<StorageServiceResponse>(response, response.getStatus());
+        } catch (Exception exception) {
+            if (debugPrintStackTrace) {
+                exception.printStackTrace();
+            }
 
-            if (debugPrintStackTrace) {fileDeleteException.printStackTrace();}
-            errorMessage = String.format("Failed to remove file '%s' from the permanent storage! Error: %s", targetFileID.toString(), fileDeleteException.getMessage());
-            return new ResponseEntity<>(new StorageServiceResponse(errorMessage), status);
+            final StorageServiceError error = new StorageServiceError("File '%s' could not be removed: %s".formatted(targetFileID.toString(), exception.getMessage()));
+            return new ResponseEntity<StorageServiceError>(error, HttpStatus.INTERNAL_SERVER_ERROR);
         }
     }
+
+    //*********************************************************//
+    //*                                                       *//
+    //*   From here on, it be all about THEM directories!     *//
+    //*                                                       *//
+    //*********************************************************//
 
     /**
      * @param directory
@@ -224,14 +213,15 @@ public class StorageServiceController {
      */
     @PostMapping("/directory/add/to/{destinationDirectoryID}")
     public ResponseEntity<?> directoryCreate(
-        @RequestParam(name = "directory") String directory,
-        @RequestParam(name = "description") String description,
-        @PathVariable("destinationDirectoryID") UUID destinationDirectoryID,
+        @RequestParam String directory,
+        @RequestParam String description,
+        @PathVariable UUID destinationDirectoryID,
         @RequestParam(name = "conflict", defaultValue = "default", required = false) String onConflict) {
 
         String errorMessage = null;
         StorageTreeNode returnValue = null;
         HttpStatus status = HttpStatus.CREATED;
+        //TODO: rework!
 
         try {
             returnValue = storageService.createDirectoryStorageTreeNode(directory, description, destinationDirectoryID, onConflict);
@@ -244,7 +234,7 @@ public class StorageServiceController {
             }
 
             if (debugPrintStackTrace) {directoryCreateException.printStackTrace();}
-            errorMessage = String.format("Failed to create new directory '%s' and add it to '%s' directory! Error: %s", directory, destinationDirectoryID.toString(), directoryCreateException.getMessage());
+            errorMessage = "Failed to create new directory '%s' and add it to '%s' directory! Error: %s".formatted(directory, destinationDirectoryID.toString(), directoryCreateException.getMessage());
             return new ResponseEntity<>(new StorageServiceResponse(errorMessage), status);
         }
     }
@@ -260,12 +250,13 @@ public class StorageServiceController {
     public ResponseEntity<?> directoryUpdate(
         @RequestParam(name = "directory") String updatedName,
         @RequestParam(name = "description") String updatedDescription,
-        @PathVariable(name = "targetDirectoryID") UUID targetDirectoryID,
+        @PathVariable UUID targetDirectoryID,
         @RequestParam(name = "conflict", defaultValue = "default", required = false) String onConflict) {
 
         String errorMessage = null;
         StorageTreeNode returnValue = null;
         HttpStatus status = HttpStatus.OK;
+        //TODO: rework!
 
         try {
             returnValue = storageService.updateDirectoryStorageTreeNode(updatedName, updatedDescription, targetDirectoryID, onConflict);
@@ -278,131 +269,157 @@ public class StorageServiceController {
             }
 
             if (debugPrintStackTrace) {directoryUpdateException.printStackTrace();}
-            errorMessage = String.format("Failed to update '%s' directory! Error: %s", targetDirectoryID.toString(), directoryUpdateException.getMessage());
+            errorMessage = "Failed to update '%s' directory! Error: %s".formatted(targetDirectoryID.toString(), directoryUpdateException.getMessage());
             return new ResponseEntity<>(new StorageServiceResponse(errorMessage), status);
         }
     }
 
     /**
-     * @param targetDirectoryID
-     * @param destinationDirectoryID
-     * @param onConflict
-     * @return
+     * @param targetDirectoryID UUID of the directory to copy
+     * @param destinationDirectoryID UUID of the directory to copy to
+     * @return <b>ResponseEntity</b> wrapping a <b>StorageServiceResponse</b> containing the appropriate <b><i>StorageTreeNode</b></i> or a <b>StorageServiceError</b> containing the <i><b>error message</b></i>
      */
-    @PostMapping("/directory/copy/{targetDirectoryID}/to/{destinationDirectoryID}")
-    public ResponseEntity<?> directoryCopy(
-        @PathVariable("targetDirectoryID") UUID targetDirectoryID,
-        @PathVariable("destinationDirectoryID") UUID destinationDirectoryID,
-        @RequestParam(name = "conflict", defaultValue = "default", required = false) String onConflict) {
-
-        String errorMessage = null;
-        StorageTreeNode returnValue = null;
-        HttpStatus status = HttpStatus.OK;
+    @PostMapping("/copy/directory/{targetDirectoryID}/to/{destinationDirectoryID}")
+    public ResponseEntity<?> copyDirectory(
+        @PathVariable UUID targetDirectoryID,
+        @PathVariable UUID destinationDirectoryID) {
 
         try {
-            returnValue = storageService.transferDirectoryStorageTreeNode(targetDirectoryID, destinationDirectoryID, true, onConflict);
-            return new ResponseEntity<>(returnValue, status);
-        } catch (Exception directoryCopyException) {
-            if (directoryCopyException instanceof FileAlreadyExistsException) {
-                status = HttpStatus.CONFLICT;
-            } else {
-                status = HttpStatus.EXPECTATION_FAILED;
-            }
-
-            if (debugPrintStackTrace) {directoryCopyException.printStackTrace();}
-            errorMessage = String.format("Failed to copy directory '%s' to '%s' directory! Error: %s", targetDirectoryID, destinationDirectoryID, directoryCopyException.getMessage());
-            return new ResponseEntity<>(new StorageServiceResponse(errorMessage), status);
-        }
-    }
-
-    /**
-     * @param targetDirectoryID
-     * @param destinationDirectoryID
-     * @param onConflict
-     * @return
-     */
-    @PostMapping("/directory/move/{targetDirectoryID}/to/{destinationDirectoryID}")
-    public ResponseEntity<?> directoryMove(
-        @PathVariable("targetDirectoryID") UUID targetDirectoryID,
-        @PathVariable("destinationDirectoryID") UUID destinationDirectoryID,
-        @RequestParam(name = "conflict", defaultValue = "default", required = false) String onConflict) {
-
-        String errorMessage = null;
-        StorageTreeNode returnValue = null;
-        HttpStatus status = HttpStatus.OK;
-
-        try {
-            returnValue = storageService.transferDirectoryStorageTreeNode(targetDirectoryID, destinationDirectoryID, false, onConflict);
-            return new ResponseEntity<>(returnValue, status);
-        } catch (Exception directoryMoveException) {
-            if (directoryMoveException instanceof FileAlreadyExistsException) {
-                status = HttpStatus.CONFLICT;
-            } else {
-                status = HttpStatus.EXPECTATION_FAILED;
-            }
-
-            if (debugPrintStackTrace) {directoryMoveException.printStackTrace();}
-            errorMessage = String.format("Failed to move directory '%s' to '%s' directory! Error: %s", targetDirectoryID, destinationDirectoryID, directoryMoveException.getMessage());
-            return new ResponseEntity<>(new StorageServiceResponse(errorMessage), status);
-        }
-    }
-
-    /**
-     * @param targetDirectoryID
-     * @return
-     */
-    @GetMapping("/directory/download/{targetDirectoryID}")
-    public ResponseEntity<?> directoryDownload(
-        @PathVariable("targetDirectoryID") UUID targetDirectoryID) {
-
-        String errorMessage = null;
-        StorageTreeNode returnValue = null;
-        HttpStatus status = HttpStatus.OK;
-
-        try {
-            returnValue = storageService.downloadDirectoryStorageTreeNode(targetDirectoryID);
-            return new ResponseEntity<>(returnValue, status);
-        } catch (Exception directoryDownloadException) {
-            status = HttpStatus.EXPECTATION_FAILED;
-
-            if (debugPrintStackTrace) {directoryDownloadException.printStackTrace();}
-            errorMessage = String.format("Failed to download directory '%s' from the permanent storage! Error: %s", targetDirectoryID.toString(), directoryDownloadException.getMessage());
-            return new ResponseEntity<>(new StorageServiceResponse(errorMessage), status);
-        }
-    }
-
-    /**
-     * @param targetDirectoryID
-     * @return
-     */
-    @DeleteMapping("/directory/delete/{targetDirectoryID}")
-    public ResponseEntity<StorageServiceResponse> directoryDelete(
-        @PathVariable("targetDirectoryID") UUID targetDirectoryID,
-        @RequestParam(name = "task", required = false) UUID taskToResumeID,
-        @RequestParam(name = "onxception", required = false) String onException,
-        @RequestParam(name = "onexceptionpersist", required = false) Boolean onExceptionIsPersistable) {
-
-        HttpStatus status = null;
-
-        try {
-            final StorageServiceResponse response = storageService.deleteDirectoryStorageTreeNode(targetDirectoryID, taskToResumeID, onException, onExceptionIsPersistable);
-            
-            if ((status = response.getStatus()) == null) {
-                status = HttpStatus.OK;
-            }
-
-            return new ResponseEntity<>(response, status);
+            final StorageServiceResponse response = storageService.transferDirectoryStorageTreeNode(targetDirectoryID, destinationDirectoryID, true);
+            return new ResponseEntity<StorageServiceResponse>(response, response.getStatus());
         } catch (Exception exception) {
             if (debugPrintStackTrace) {
                 exception.printStackTrace();
             }
 
-            status = HttpStatus.INTERNAL_SERVER_ERROR;
-            final String errorMessage = String.format("Directory '%s' could not be removed: %s", targetDirectoryID.toString(), exception.getMessage());
-            final StorageServiceResponse error = new StorageServiceResponse(errorMessage, status, null, null, null, null, null);
-            return new ResponseEntity<>(error, status);
+            final StorageServiceError error = new StorageServiceError("Failed to copy directory '%s' to '%s' directory! Error: %s".formatted(targetDirectoryID, destinationDirectoryID, exception.getMessage()));
+            return new ResponseEntity<StorageServiceError>(error, HttpStatus.INTERNAL_SERVER_ERROR);
         }
     }
+
+    /**
+     * @param targetDirectoryID UUID of the directory to move
+     * @param destinationDirectoryID UUID of the directory to move to
+     * @return <b>ResponseEntity</b> wrapping a <b>StorageServiceResponse</b> containing the appropriate <b><i>StorageTreeNode</b></i> or a <b>StorageServiceError</b> containing the <i><b>error message</b></i>
+     */
+    @PostMapping("/move/directory/{targetDirectoryID}/to/{destinationDirectoryID}")
+    public ResponseEntity<?> moveDirectory(
+        @PathVariable UUID targetDirectoryID,
+        @PathVariable UUID destinationDirectoryID) {
+
+        try {
+            final StorageServiceResponse response = storageService.transferDirectoryStorageTreeNode(targetDirectoryID, destinationDirectoryID, false);
+            return new ResponseEntity<StorageServiceResponse>(response, response.getStatus());
+        } catch (Exception exception) {
+            if (debugPrintStackTrace) {
+                exception.printStackTrace();
+            }
+
+            final StorageServiceError error = new StorageServiceError("Failed to move directory '%s' to '%s' directory! Error: %s".formatted(targetDirectoryID, destinationDirectoryID, exception.getMessage()));
+            return new ResponseEntity<StorageServiceError>(error, HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    /**
+     * @param targetDirectoryID UUID of the directory to download
+     * @return <b>ResponseEntity</b> wrapping a <b>StorageServiceResponse</b> containing the appropriate <b><i>StorageTreeNode</b></i> or a <b>StorageServiceError</b> containing the <i><b>error message</b></i>
+     */
+    @GetMapping("/download/directory/{targetDirectoryID}")
+    public ResponseEntity<?> downloadDirectory(
+        @PathVariable UUID targetDirectoryID) {
+
+        try {
+            final StorageServiceResponse response = storageService.downloadDirectoryStorageTreeNode(targetDirectoryID);
+            return new ResponseEntity<StorageServiceResponse>(response, response.getStatus());
+        } catch (Exception exception) {
+            if (debugPrintStackTrace) {
+                exception.printStackTrace();
+            }
+
+            final StorageServiceError error = new StorageServiceError("Directory '%s' could not be download: %s".formatted(targetDirectoryID.toString(), exception.getMessage()));
+            return new ResponseEntity<StorageServiceError>(error, HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    /**
+     * @param targetDirectoryID UUID of the directory to delete
+     * @return <b>ResponseEntity</b> wrapping a <b>StorageServiceResponse</b> containing the appropriate <b><i>StorageTreeNode</b></i> or a <b>StorageServiceError</b> containing the <i><b>error message</b></i>
+     */
+    @DeleteMapping("/delete/directory/{targetDirectoryID}")
+    public ResponseEntity<?> deleteDirectory(
+        @PathVariable UUID targetDirectoryID) {
+
+        try {
+            final StorageServiceResponse response = storageService.deleteDirectoryStorageTreeNode(targetDirectoryID);
+            return new ResponseEntity<StorageServiceResponse>(response, response.getStatus());
+        } catch (Exception exception) {
+            if (debugPrintStackTrace) {
+                exception.printStackTrace();
+            }
+
+            final StorageServiceError error = new StorageServiceError("Directory '%s' could not be removed: %s".formatted(targetDirectoryID.toString(), exception.getMessage()));
+            return new ResponseEntity<StorageServiceError>(error, HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    //***************************************************//
+    //*                                                 *//
+    //*   From here on, it be all about THEM tasks!     *//
+    //*                                                 *//
+    //***************************************************//
+
+    /**
+     * @param taskID UUID of the task to execute
+     * @param onException directive to dictate on-exception action
+     * @param onExceptionIsPersistent whether the aforementioned on-exception action applies to just this or all nodes similar to it 
+     * @return <b>ResponseEntity</b> wrapping a <b>StorageServiceResponse</b> containing the appropriate <b><i>StorageTreeNode</b></i> or a <b>StorageServiceError</b> containing the <i><b>error message</b></i>
+     */
+    @GetMapping("/execute/task/{taskID}")
+    public ResponseEntity<?> executeTask(
+        @PathVariable(name = "taskID", required = true) UUID taskID,
+        @RequestParam(name = "exception", required = false) String onException,
+        @RequestParam(name = "persistent", required = false) Boolean onExceptionIsPersistent) {
+
+        try {
+            final StorageServiceResponse response = storageService.executeStorageTask(taskID, onException, onExceptionIsPersistent, false);
+            return new ResponseEntity<StorageServiceResponse>(response, response.getStatus());
+        } catch (Exception exception) {
+            if (debugPrintStackTrace) {
+                exception.printStackTrace();
+            }
+
+            final StorageServiceError error = new StorageServiceError("Task '%s' could not be executed: %s".formatted(taskID.toString(), exception.getMessage()));
+            return new ResponseEntity<StorageServiceError>(error, HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    /**
+     * @param taskID UUID of the task to cancel
+     * @return <b>ResponseEntity</b> wrapping a <b>StorageServiceResponse</b> containing the appropriate <b><i>StorageTreeNode</b></i> or a <b>StorageServiceError</b> containing the <i><b>error message</b></i>
+     */
+    @GetMapping("/cancel/task/{taskID}")
+    public ResponseEntity<?> cancelTask(
+        @PathVariable(name = "taskID", required = true) UUID taskID) {
+
+        try {
+            final StorageServiceResponse response = storageService.executeStorageTask(taskID, null, null, true);
+            return new ResponseEntity<StorageServiceResponse>(response, response.getStatus());
+        } catch (Exception exception) {
+            if (debugPrintStackTrace) {
+                exception.printStackTrace();
+            }
+
+            final StorageServiceError error = new StorageServiceError("Task '%s' could not be canceled: %s".formatted(taskID.toString(), exception.getMessage()));
+            return new ResponseEntity<StorageServiceError>(error, HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+    
+
+    //***************************************************//
+    //*                                                 *//
+    //*   From here on, it be all about THEM rests!     *//
+    //*                                                 *//
+    //***************************************************//
 
     /**
      * @return
@@ -413,6 +430,7 @@ public class StorageServiceController {
         String errorMessage = null;
         StorageTreeNode returnValue = null;
         HttpStatus status = HttpStatus.OK;
+        //TODO: rework!
 
         try {
             returnValue = storageService.downloadStorageTreeRootNode();
@@ -421,7 +439,7 @@ public class StorageServiceController {
             status = HttpStatus.EXPECTATION_FAILED;
 
             if (debugPrintStackTrace) {rootDownloadException.printStackTrace();}
-            errorMessage = String.format("Failed to download the *ROOT* directory of the permanent storage! Error: %s", rootDownloadException.getMessage());
+            errorMessage = "Failed to download the *ROOT* directory of the permanent storage! Error: %s".formatted(rootDownloadException.getMessage());
             return new ResponseEntity<>(new StorageServiceResponse(errorMessage), status);
         }
     }

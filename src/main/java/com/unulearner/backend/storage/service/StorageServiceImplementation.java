@@ -1,12 +1,7 @@
 package com.unulearner.backend.storage.service;
 
 import java.net.URI;
-
 import java.util.UUID;
-import java.util.List;
-import java.util.Arrays;
-import java.util.ArrayList;
-
 import java.nio.file.Path;
 import java.nio.file.Files;
 import java.nio.file.StandardCopyOption;
@@ -17,16 +12,18 @@ import org.springframework.core.io.UrlResource;
 import org.springframework.http.HttpStatus;
 import org.springframework.context.annotation.Scope;
 import org.springframework.web.multipart.MultipartFile;
-import org.springframework.beans.factory.annotation.Autowired;
+//import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.config.ConfigurableBeanFactory;
 
 import com.unulearner.backend.storage.StorageTree;
 import com.unulearner.backend.storage.StorageTreeNode;
-
-import com.unulearner.backend.storage.tasks.StorageRemoveRecursivelyTask;
-import com.unulearner.backend.storage.tasks.StorageTransferRecursivelyTask;
-import com.unulearner.backend.storage.repository.StorageTasksMap;
+import com.unulearner.backend.storage.tasks.StorageTask;
+import com.unulearner.backend.storage.tasks.StorageTaskDeleteDirectory;
+import com.unulearner.backend.storage.tasks.StorageTaskDeleteFile;
+import com.unulearner.backend.storage.tasks.StorageTaskTransferDirectory;
+import com.unulearner.backend.storage.tasks.StorageTaskTransferFile;
 import com.unulearner.backend.storage.responses.StorageServiceResponse;
+import com.unulearner.backend.storage.repository.StorageTasksMap;
 
 import java.nio.file.FileAlreadyExistsException;
 import com.unulearner.backend.storage.exceptions.StorageServiceException;
@@ -34,23 +31,19 @@ import com.unulearner.backend.storage.exceptions.StorageServiceException;
 @Service
 @Scope(ConfigurableBeanFactory.SCOPE_SINGLETON)
 public class StorageServiceImplementation implements StorageService {
+    final private StorageTree storageTree;
+    final private StorageTasksMap storageTasksMap;
 
-    // TODO: Cache this thing
-    @Autowired
-    private StorageTree storageTree;
-
-    final private StorageTasksMap<StorageRemoveRecursivelyTask> storageRemoveRecursivelyTaskMap;
-    final private StorageTasksMap<StorageTransferRecursivelyTask> storageTransferRecursivelyTaskMap;
-
-    private StorageServiceImplementation(
-        StorageTasksMap<StorageRemoveRecursivelyTask> storageRemoveRecursivelyTaskMap,
-        StorageTasksMap<StorageTransferRecursivelyTask> storageTransferRecursivelyTaskMap
-    ) {
-        this.storageRemoveRecursivelyTaskMap = storageRemoveRecursivelyTaskMap;
-        this.storageTransferRecursivelyTaskMap = storageTransferRecursivelyTaskMap;
+    private StorageServiceImplementation(StorageTree storageTree, StorageTasksMap storageTasksMap) {
+        this.storageTree = storageTree;
+        this.storageTasksMap = storageTasksMap;
     }
 
-    /* FILES */
+    //**********************************************************//
+    //*                                                        *//
+    //*   From here on, it be all about THEM single files!     *//
+    //*                                                        *//
+    //**********************************************************//
 
     public StorageTreeNode createFileStorageTreeNode(MultipartFile newFile, String fileDescription, UUID destinationDirectoryID, String onConflict) throws Exception {
         String errorMessage = null;
@@ -59,32 +52,32 @@ public class StorageServiceImplementation implements StorageService {
 
         final StorageTreeNode destinationStorageTreeNode = this.storageTree.retrieveStorageTreeNode(destinationDirectoryID);
         if (destinationStorageTreeNode == null || destinationStorageTreeNode.getChildren() == null) {
-            errorMessage = String.format("Destination directory ID '%s' is invalid!", destinationDirectoryID.toString());
+            errorMessage = "Destination directory ID '%s' is invalid!".formatted(destinationDirectoryID.toString());
             throw new StorageServiceException(errorMessage);
         }
 
         final String fileName = newFile.getOriginalFilename();
         if (fileName == null || fileName.isBlank()) {
-            errorMessage = String.format("Invalid file name!");
+            errorMessage = "Invalid file name!".formatted();
             throw new StorageServiceException(errorMessage);
         }
 
         if (fileDescription == null || fileDescription.isBlank()) {
-            errorMessage = String.format("Invalid file description!");
+            errorMessage = "Invalid file description!".formatted();
             throw new StorageServiceException(errorMessage);
         }
 
         try {
             temporaryFilePath = Files.createTempFile(fileName, ".tmp");
             if (Files.copy(newFile.getInputStream(), temporaryFilePath, StandardCopyOption.REPLACE_EXISTING) <= 0) {
-                errorMessage = String.format("File '%s' is not writeable!", fileName);
+                errorMessage = "File '%s' is not writeable!".formatted(fileName);
                 throw new StorageServiceException(errorMessage);
             }
 
             //TODO: URL? Parent?
             temporaryStorageTreeNode = new StorageTreeNode(fileName, fileDescription, null, null, null, temporaryFilePath);
         } catch (Exception createTemporaryFileException) {
-            errorMessage = String.format("Failed to write '%s' to disk!", fileName);
+            errorMessage = "Failed to write '%s' to disk!".formatted(fileName);
             throw new StorageServiceException(errorMessage, createTemporaryFileException);
         }
 
@@ -93,7 +86,7 @@ public class StorageServiceImplementation implements StorageService {
         } catch (FileAlreadyExistsException nodeAlreadyExistsException) {
             throw new FileAlreadyExistsException(nodeAlreadyExistsException.getMessage());
         } catch (StorageServiceException commitStorageTreeNodeException) {
-            errorMessage = String.format("Failed to commit '%s' to permanent storage!", fileName);
+            errorMessage = "Failed to commit '%s' to permanent storage!".formatted(fileName);
             throw new StorageServiceException(errorMessage, commitStorageTreeNodeException);
         }
     }
@@ -103,7 +96,7 @@ public class StorageServiceImplementation implements StorageService {
 
         final StorageTreeNode targetStorageTreeNode = this.storageTree.retrieveStorageTreeNode(targetFileID);
         if (targetStorageTreeNode == null || targetStorageTreeNode.getChildren() != null) {
-            errorMessage = String.format("Target file ID '%s' is invalid!", targetFileID.toString());
+            errorMessage = "Target file ID '%s' is invalid!".formatted(targetFileID.toString());
             throw new StorageServiceException(errorMessage);
         }
 
@@ -116,32 +109,47 @@ public class StorageServiceImplementation implements StorageService {
         } catch (FileAlreadyExistsException nodeAlreadyExistsException) {
             throw new FileAlreadyExistsException(nodeAlreadyExistsException.getMessage());
         } catch (Exception commitStorageTreeNodeException) {
-            errorMessage = String.format("Failed to commit changes to '%s' to permanent storage!", targetStorageTreeNode.getOnDiskName());
+            errorMessage = "Failed to commit changes to '%s' to permanent storage!".formatted(targetStorageTreeNode.getOnDiskName());
             throw new StorageServiceException(errorMessage, commitStorageTreeNodeException);
         }
     }
 
-    public StorageTreeNode transferFileStorageTreeNode(UUID targetFileID, UUID destinationDirectoryID, Boolean persistOriginalNode, String onConflict) throws Exception {
+    public StorageServiceResponse transferFileStorageTreeNode(UUID targetFileID, UUID destinationDirectoryID, Boolean preserveOriginal) throws Exception {
+        UUID taskID = null;
+        Integer timeLeft = null;
         String errorMessage = null;
 
         final StorageTreeNode targetStorageTreeNode = this.storageTree.retrieveStorageTreeNode(targetFileID);
         if (targetStorageTreeNode == null || targetStorageTreeNode.getChildren() != null) {
-            errorMessage = String.format("Target file ID '%s' is invalid!", targetFileID.toString());
+            errorMessage = "Target file ID '%s' is invalid!".formatted(targetFileID.toString());
             throw new StorageServiceException(errorMessage);
         }
 
         final StorageTreeNode destinationStorageTreeNode = this.storageTree.retrieveStorageTreeNode(destinationDirectoryID);
         if (destinationStorageTreeNode == null || destinationStorageTreeNode.getChildren() == null) {
-            errorMessage = String.format("Destination Directory ID '%s' is invalid!", destinationDirectoryID.toString());
+            errorMessage = "Destination Directory ID '%s' is invalid!".formatted(destinationDirectoryID.toString());
             throw new StorageServiceException(errorMessage);
         }
 
+        final StorageTaskTransferFile storageTask;
         try {
-            return this.storageTree.commitStorageTreeNode(targetStorageTreeNode, destinationStorageTreeNode, persistOriginalNode, onConflict);
-        } catch (Exception commitStorageTreeNodeException) {
-            errorMessage = String.format("Failed to %s file '%s' to '%s' and commit it to permanent storage!", persistOriginalNode ? "copy" : "move", targetStorageTreeNode.getOnDiskName(), destinationStorageTreeNode.getOnDiskName());
-            throw new StorageServiceException(errorMessage, commitStorageTreeNodeException);
+            storageTask = new StorageTaskTransferFile(this.storageTree, targetStorageTreeNode, destinationStorageTreeNode, preserveOriginal);
+
+            taskID = this.storageTasksMap.addStorageTask(storageTask);
+            timeLeft = this.storageTasksMap.scheduleStorageTaskRemoval(taskID);
+        } catch (Exception exception) {
+            errorMessage = "File transfer task creation failed: %s".formatted(exception.getMessage());
+            throw new StorageServiceException(errorMessage, exception);
         }
+        
+        return new StorageServiceResponse(
+            taskID, timeLeft,
+            storageTask.getTaskLog(),
+            storageTask.getExitStatus(),
+            storageTask.getExitMessage(),
+            storageTask.getCurrentTarget(),
+            storageTask.getOnConflictOptions()
+        );
     }
 
     public Resource downloadFileStorageTreeNode(UUID targetFileID) throws Exception {
@@ -149,43 +157,69 @@ public class StorageServiceImplementation implements StorageService {
 
         final StorageTreeNode targetStorageTreeNode = this.storageTree.retrieveStorageTreeNode(targetFileID);
         if (targetStorageTreeNode == null || targetStorageTreeNode.getChildren() != null) {
-            errorMessage = String.format("Target File ID '%s' is invalid!", targetFileID.toString());
+            errorMessage = "Target File ID '%s' is invalid!".formatted(targetFileID.toString());
             throw new StorageServiceException(errorMessage);
         }
 
         try {
             final URI targetURI = targetStorageTreeNode.getAbsolutePath().toUri();
             if (targetURI == null) {
-                errorMessage = String.format("File '%s' could not be reached!", targetStorageTreeNode.getOnDiskName());
+                errorMessage = "File '%s' could not be reached!".formatted(targetStorageTreeNode.getOnDiskName());
                 throw new StorageServiceException(errorMessage);
             }
 
             final Resource targetResource = new UrlResource(targetURI);
             if (targetResource == null || !targetResource.isReadable()) {
-                errorMessage = String.format("File '%s' could not be read!", targetStorageTreeNode.getOnDiskName());
+                errorMessage = "File '%s' could not be read!".formatted(targetStorageTreeNode.getOnDiskName());
                 throw new StorageServiceException(errorMessage);
             }
 
             return targetResource;
         } catch (Exception retrieveResourceFromStorageException) {
-            errorMessage = String.format("Failed to retrieve '%s' input stream from permanent storage!", targetStorageTreeNode.getOnDiskName());
+            errorMessage = "Failed to retrieve '%s' input stream from permanent storage!".formatted(targetStorageTreeNode.getOnDiskName());
             throw new StorageServiceException(errorMessage, retrieveResourceFromStorageException);
         }
     }
 
-    public void deleteFileStorageTreeNode(UUID targetFileID) throws Exception {
+    public StorageServiceResponse deleteFileStorageTreeNode(UUID targetFileID) throws Exception {
+        UUID taskID = null;
+        Integer timeLeft = null;
         String errorMessage = null;
 
         final StorageTreeNode targetStorageTreeNode = this.storageTree.retrieveStorageTreeNode(targetFileID);
         if (targetStorageTreeNode == null || targetStorageTreeNode.getChildren() != null) {
-            errorMessage = String.format("Target File ID '%s' is invalid!", targetFileID.toString());
+            errorMessage = "Target File ID '%s' is invalid!".formatted(targetFileID.toString());
             throw new StorageServiceException(errorMessage);
         }
 
         this.storageTree.removeStorageTreeNode(targetStorageTreeNode);
+
+        final StorageTaskDeleteFile storageTask;
+        try {
+            storageTask = new StorageTaskDeleteFile(this.storageTree, targetStorageTreeNode);
+
+            taskID = this.storageTasksMap.addStorageTask(storageTask);
+            timeLeft = this.storageTasksMap.scheduleStorageTaskRemoval(taskID);
+        } catch (Exception exception) {
+            errorMessage = "File removal task creation failed: %s".formatted(exception.getMessage());
+            throw new StorageServiceException(errorMessage, exception);
+        }
+
+        return new StorageServiceResponse(
+            taskID, timeLeft,
+            storageTask.getTaskLog(),
+            storageTask.getExitStatus(),
+            storageTask.getExitMessage(),
+            storageTask.getCurrentTarget(),
+            storageTask.getOnConflictOptions()
+        );
     }
 
-    /* DIRECTORIES */
+    //*********************************************************//
+    //*                                                       *//
+    //*   From here on, it be all about THEM directories!     *//
+    //*                                                       *//
+    //*********************************************************//
 
     public StorageTreeNode createDirectoryStorageTreeNode(String directoryName, String directoryDescription, UUID destinationDirectoryID, String onConflict) throws Exception {
         String errorMessage = null;
@@ -194,17 +228,17 @@ public class StorageServiceImplementation implements StorageService {
 
         final StorageTreeNode destinationStorageTreeNode = this.storageTree.retrieveStorageTreeNode(destinationDirectoryID);
         if (destinationStorageTreeNode == null || destinationStorageTreeNode.getChildren() == null) {
-            errorMessage = String.format("Destination directory ID '%s' is invalid!", destinationDirectoryID.toString());
+            errorMessage = "Destination directory ID '%s' is invalid!".formatted(destinationDirectoryID.toString());
             throw new StorageServiceException(errorMessage);
         }
 
         if (directoryName == null || directoryName.isBlank()) {
-            errorMessage = String.format("Invalid directory name!");
+            errorMessage = "Invalid directory name!".formatted();
             throw new StorageServiceException(errorMessage);
         }
 
         if (directoryDescription == null || directoryDescription.isBlank()) {
-            errorMessage = String.format("Invalid directory description!");
+            errorMessage = "Invalid directory description!".formatted();
             throw new StorageServiceException(errorMessage);
         }
 
@@ -212,7 +246,7 @@ public class StorageServiceImplementation implements StorageService {
             temporaryDirectoryPath = Files.createTempDirectory(directoryName);
             temporaryStorageTreeNode = new StorageTreeNode(directoryName, directoryDescription, null, null, null, temporaryDirectoryPath);
         } catch (Exception createTemporaryDirectoryException) {
-            errorMessage = String.format("Failed to write '%s' to disk!", directoryName);
+            errorMessage = "Failed to write '%s' to disk!".formatted(directoryName);
             throw new StorageServiceException(errorMessage, createTemporaryDirectoryException);
         }
 
@@ -221,7 +255,7 @@ public class StorageServiceImplementation implements StorageService {
         } catch (FileAlreadyExistsException nodeAlreadyExistsException) {
             throw new FileAlreadyExistsException(nodeAlreadyExistsException.getMessage());
         } catch (Exception commitStorageTreeNodeException) {
-            errorMessage = String.format("Failed to commit '%s' to permanent storage!", directoryName);
+            errorMessage = "Failed to commit '%s' to permanent storage!".formatted(directoryName);
             throw new StorageServiceException(errorMessage, commitStorageTreeNodeException);
         }
     }
@@ -231,7 +265,7 @@ public class StorageServiceImplementation implements StorageService {
 
         final StorageTreeNode targetStorageTreeNode = this.storageTree.retrieveStorageTreeNode(targetDirectoryID);
         if (targetStorageTreeNode == null || targetStorageTreeNode.getChildren() == null) {
-            errorMessage = String.format("Target directory ID '%s' is invalid!", targetDirectoryID.toString());
+            errorMessage = "Target directory ID '%s' is invalid!".formatted(targetDirectoryID.toString());
             throw new StorageServiceException(errorMessage);
         }
 
@@ -244,218 +278,158 @@ public class StorageServiceImplementation implements StorageService {
         } catch (FileAlreadyExistsException nodeAlreadyExistsException) {
             throw new FileAlreadyExistsException(nodeAlreadyExistsException.getMessage());
         } catch (Exception commitStorageTreeNodeException) {
-            errorMessage = String.format("Failed to commit changes to '%s' to permanent storage!", targetStorageTreeNode.getOnDiskName());
+            errorMessage = "Failed to commit changes to '%s' to permanent storage!".formatted(targetStorageTreeNode.getOnDiskName());
             throw new StorageServiceException(errorMessage, commitStorageTreeNodeException);
         }
     }
 
-    public StorageTreeNode transferDirectoryStorageTreeNode(UUID targetDirectoryID, UUID destinationDirectoryID, Boolean persistOriginalNode, String onConflict) throws Exception {
-        return transferDirectoryStorageTreeNode(targetDirectoryID, destinationDirectoryID, persistOriginalNode, onConflict, null, null, null).getNode();
-    }
-
-    public StorageServiceResponse transferDirectoryStorageTreeNode(UUID targetDirectoryID, UUID destinationDirectoryID, Boolean persistOriginalNode, String onConflict, UUID taskID, String newOnExceptionAction, Boolean newOnExceptionActionIsPersistent) throws Exception {
+    public StorageServiceResponse transferDirectoryStorageTreeNode(UUID targetDirectoryID, UUID destinationDirectoryID, Boolean preserveOriginal) throws Exception {
+        UUID taskID = null;
         Integer timeLeft = null;
-        String logMessage = null;
         String errorMessage = null;
-        String successMessage = null;
-        String exceptionMessage = null;
-        String onExceptionAction = null;
-        StorageTreeNode temporaryNode = null;
-        StorageTreeNode currentTargetNode = null;
-        StorageTreeNode currentDestinationNode = null;
 
         final StorageTreeNode targetStorageTreeNode = this.storageTree.retrieveStorageTreeNode(targetDirectoryID);
         if (targetStorageTreeNode == null || targetStorageTreeNode.getChildren() == null) {
-            errorMessage = String.format("Target directory ID '%s' is invalid!", targetDirectoryID.toString());
+            errorMessage = "Target directory ID '%s' is invalid!".formatted(targetDirectoryID.toString());
             throw new StorageServiceException(errorMessage);
         }
 
         final StorageTreeNode destinationStorageTreeNode = this.storageTree.retrieveStorageTreeNode(destinationDirectoryID);
         if (destinationStorageTreeNode == null || destinationStorageTreeNode.getChildren() == null) {
-            errorMessage = String.format("Destination directory ID '%s' is invalid!", destinationDirectoryID.toString());
+            errorMessage = "Destination directory ID '%s' is invalid!".formatted(destinationDirectoryID.toString());
             throw new StorageServiceException(errorMessage);
         }
 
-        final StorageTransferRecursivelyTask storageTransferRecursivelyTask;
-        if (taskID != null) {
-            try {
-                storageTransferRecursivelyTask = this.storageTransferRecursivelyTaskMap.getStorageTask(taskID);
-                if (storageTransferRecursivelyTask == null) {
-                    errorMessage = String.format("Task ID '%s' is invalid!", taskID.toString());
-                    throw new StorageServiceException(errorMessage);
-                }
-            } catch (Exception exception) {
-                errorMessage = String.format("Task ID '%s' could not be resumed!", taskID.toString());
-                throw new StorageServiceException(errorMessage, exception);
-            }
-        } else {
-            try {
-                storageTransferRecursivelyTask = new StorageTransferRecursivelyTask(targetStorageTreeNode, destinationStorageTreeNode);
-                taskID = this.storageTransferRecursivelyTaskMap.addStorageTask(storageTransferRecursivelyTask);
-            } catch (Exception exception) {
-                errorMessage = String.format("Task creation failed!");
-                throw new StorageServiceException(errorMessage, exception);
-            }
+        final StorageTaskTransferDirectory storageTask;
+        try {
+            storageTask = new StorageTaskTransferDirectory(this.storageTree, targetStorageTreeNode, destinationStorageTreeNode, preserveOriginal);
+
+            taskID = this.storageTasksMap.addStorageTask(storageTask);
+            timeLeft = this.storageTasksMap.scheduleStorageTaskRemoval(taskID);
+        } catch (Exception exception) {
+            errorMessage = "Directory transfer task creation failed: %s".formatted(exception.getMessage());
+            throw new StorageServiceException(errorMessage, exception);
         }
-
-        if (newOnExceptionAction != null) {
-            currentTargetNode = storageTransferRecursivelyTask.getTransferTarget();
-            currentDestinationNode = storageTransferRecursivelyTask.getTransferDestination();
-            switch (newOnExceptionAction) {
-                case "retry":
-                    break;
-                case "ignore":
-                    logMessage = String.format("%s '%s' was ignored!", currentTargetNode.getChildren() != null ? "Directory" : "File", currentTargetNode.getOnDiskURL());
-                    storageTransferRecursivelyTask.logTransferAttempt(logMessage);
-                    storageTransferRecursivelyTask.advanceTransferIterator(null);
-                    break;
-                case "cancel":
-                    this.storageRemoveRecursivelyTaskMap.removeStorageTask(taskID);
-                    successMessage = String.format("Directory '%s' transfer to '%s' was cancelled!", targetStorageTreeNode.getOnDiskURL(), currentDestinationNode.getOnDiskURL());
-                    return new StorageServiceResponse(successMessage, HttpStatus.OK, null, taskID, storageTransferRecursivelyTask.getTransferLog(), null, null);
-                default:
-                    timeLeft = this.storageRemoveRecursivelyTaskMap.scheduleStorageTaskRemoval(taskID);
-                    errorMessage = String.format("Action '%s' is invalid!", newOnExceptionAction);
-                    return new StorageServiceResponse(errorMessage, HttpStatus.BAD_REQUEST, currentTargetNode, taskID, storageTransferRecursivelyTask.getTransferLog(), null, null);
-            }
-
-            if (newOnExceptionActionIsPersistent != null && newOnExceptionActionIsPersistent == true) {
-                if (currentTargetNode.getChildren() != null) {
-                    storageTransferRecursivelyTask.setOnDirectoryException(newOnExceptionAction);
-                } else {
-                    storageTransferRecursivelyTask.setOnFileException(newOnExceptionAction);
-                }
-            }
-        }
-
-        do {
-            currentTargetNode = storageTransferRecursivelyTask.getTransferTarget();
-            currentDestinationNode = storageTransferRecursivelyTask.getTransferDestination();
-
-            try {
-                temporaryNode = currentTargetNode;
-                //temporaryNode = this.storageTree.commitStorageTreeNode(currentTargetNode, currentDestinationNode, persistOriginalNode, onConflict);
-                logMessage = String.format("%s '%s' was transfered to '%s' directory successfully!", currentTargetNode.getChildren() != null ? "Directory" : "File", currentTargetNode.getOnDiskURL(), currentDestinationNode.getOnDiskURL());
-                storageTransferRecursivelyTask.logTransferAttempt(logMessage);
-                storageTransferRecursivelyTask.advanceTransferIterator(temporaryNode);
-            } catch (Exception exception) {
-                onExceptionAction = currentTargetNode.getChildren() != null ? storageTransferRecursivelyTask.getOnDirectoryException() : storageTransferRecursivelyTask.getOnFileException();
-
-                if (onExceptionAction != null && onExceptionAction.equals("ignore")) {
-                    logMessage = String.format("%s '%s' was ignored!", currentTargetNode.getChildren() != null ? "Directory" : "File", currentTargetNode.getOnDiskURL());
-                    storageTransferRecursivelyTask.logTransferAttempt(logMessage);
-                    storageTransferRecursivelyTask.advanceTransferIterator(null);
-                    continue;
-                }
-
-                if (exception instanceof FileAlreadyExistsException) {
-                    //do the stuff!
-                }
-
-                timeLeft = this.storageRemoveRecursivelyTaskMap.scheduleStorageTaskRemoval(taskID);
-                exceptionMessage = String.format("%s '%s' could not be transfered to '%s' directory: %s", currentTargetNode.getChildren() != null ? "Directory" : "File", currentTargetNode.getOnDiskURL(), currentDestinationNode.getOnDiskURL(), exception.getMessage());
-                return new StorageServiceResponse(exceptionMessage, HttpStatus.UNPROCESSABLE_ENTITY, currentTargetNode, taskID, storageTransferRecursivelyTask.getTransferLog(), storageTransferRecursivelyTask.getOnExceptionOptions(currentTargetNode.getChildren() != null), timeLeft);
-            }
-        } while (storageTransferRecursivelyTask.hasNextTarget());
-
-        for (String ss : storageTransferRecursivelyTask.getTransferLog()) {
-            System.out.println("-----");
-            System.out.println(ss);
-        }
-
-        this.storageRemoveRecursivelyTaskMap.removeStorageTask(taskID);
-        successMessage = String.format("Directory '%s' and all of its contents have been transfered to '%s' directory successfully!", targetStorageTreeNode.getOnDiskURL(), destinationStorageTreeNode.getOnDiskURL());
-        return new StorageServiceResponse(successMessage, HttpStatus.OK, null, taskID, storageTransferRecursivelyTask.getTransferLog(), null, null);
+        
+        return new StorageServiceResponse(
+            taskID, timeLeft,
+            storageTask.getTaskLog(),
+            storageTask.getExitStatus(),
+            storageTask.getExitMessage(),
+            storageTask.getCurrentTarget(),
+            storageTask.getOnConflictOptions()
+        );
     }
 
-    public StorageTreeNode downloadDirectoryStorageTreeNode(UUID targetDirectoryID) throws Exception {
-        String errorMessage = null;
-
-        final StorageTreeNode targetStorageTreeNode = this.storageTree.retrieveStorageTreeNode(targetDirectoryID);
-        if (targetStorageTreeNode == null || targetStorageTreeNode.getChildren() == null) {
-            errorMessage = String.format("Target directory ID '%s' is invalid!", targetDirectoryID.toString());
-            throw new StorageServiceException(errorMessage);
-        }
-
-        return targetStorageTreeNode;
-    }
-
-    public StorageServiceResponse deleteDirectoryStorageTreeNode(UUID targetDirectoryID, UUID taskID, String newOnExceptionAction, Boolean newOnExceptionActionIsPersistent) throws Exception {
+    public StorageServiceResponse deleteDirectoryStorageTreeNode(UUID targetDirectoryID) throws Exception {
+        UUID taskID = null;
         Integer timeLeft = null;
-        String logMessage = null;
         String errorMessage = null;
-        String successMessage = null;
-        String exceptionMessage = null;
-        String onExceptionAction = null;
-        StorageTreeNode currentNode = null;
 
         final StorageTreeNode targetStorageTreeNode = this.storageTree.retrieveStorageTreeNode(targetDirectoryID);
         if (targetStorageTreeNode == null || targetStorageTreeNode.getChildren() == null) {
-            errorMessage = String.format("Target directory ID '%s' is invalid!", targetDirectoryID.toString());
+            errorMessage = "Target directory ID '%s' is invalid!".formatted(targetDirectoryID.toString());
             throw new StorageServiceException(errorMessage);
         }
 
-        final StorageRemoveRecursivelyTask storageRemoveRecursivelyTask;
-        if (taskID != null) {
-            try {
-                storageRemoveRecursivelyTask = this.storageRemoveRecursivelyTaskMap.getStorageTask(taskID);
-                if (storageRemoveRecursivelyTask == null) {
-                    errorMessage = String.format("Task ID '%s' is invalid!", taskID.toString());
-                    throw new StorageServiceException(errorMessage);
-                }
-            } catch (Exception exception) {
-                errorMessage = String.format("Task ID '%s' could not be resumed!", taskID.toString());
-                throw new StorageServiceException(errorMessage, exception);
-            }
-        } else {
-            try {
-                storageRemoveRecursivelyTask = new StorageRemoveRecursivelyTask(this.storageTree, targetStorageTreeNode);
-                taskID = this.storageRemoveRecursivelyTaskMap.addStorageTask(storageRemoveRecursivelyTask);
-            } catch (Exception exception) {
-                errorMessage = String.format("Task creation failed!");
-                throw new StorageServiceException(errorMessage, exception);
-            }
+        final StorageTaskDeleteDirectory storageTask;
+        try {
+            storageTask = new StorageTaskDeleteDirectory(this.storageTree, targetStorageTreeNode);
+
+            taskID = this.storageTasksMap.addStorageTask(storageTask);
+            timeLeft = this.storageTasksMap.scheduleStorageTaskRemoval(taskID);
+        } catch (Exception exception) {
+            errorMessage = "Directory removal task creation failed: %s".formatted(exception.getMessage());
+            throw new StorageServiceException(errorMessage, exception);
         }
 
-        if (newOnExceptionAction != null) {
-            currentNode = storageRemoveRecursivelyTask.getRemovalTarget();
-            switch (newOnExceptionAction) {
-                case "retry":
-                    break;
-                case "ignore":
-                    logMessage = String.format("%s '%s' was ignored!", currentNode.getChildren() != null ? "Directory" : "File", currentNode.getOnDiskURL());
-                    storageRemoveRecursivelyTask.logRemovalAttempt(logMessage);
-                    storageRemoveRecursivelyTask.advanceRemovalIterator();
-                    break;
-                case "cancel":
-                    this.storageRemoveRecursivelyTaskMap.removeStorageTask(taskID);
-                    successMessage = String.format("Directory '%s' removal was cancelled!", targetStorageTreeNode.getOnDiskURL());
-                    return new StorageServiceResponse(successMessage, HttpStatus.OK, null, taskID, storageRemoveRecursivelyTask.getRemovalLog(), null, null);
-                default:
-                    timeLeft = this.storageRemoveRecursivelyTaskMap.scheduleStorageTaskRemoval(taskID);
-                    errorMessage = String.format("Action '%s' is invalid!", newOnExceptionAction);
-                    return new StorageServiceResponse(errorMessage, HttpStatus.BAD_REQUEST, currentNode, taskID, storageRemoveRecursivelyTask.getRemovalLog(), null, null);
-            }
-
-            if (newOnExceptionActionIsPersistent != null && newOnExceptionActionIsPersistent == true) {
-                if (currentNode.getChildren() != null) {
-                    storageRemoveRecursivelyTask.setOnDirectoryException(newOnExceptionAction);
-                } else {
-                    storageRemoveRecursivelyTask.setOnFileException(newOnExceptionAction);
-                }
-            }
-        }
-
-        if (storageRemoveRecursivelyTask.executedSuccessfully() == true) {
-            timeLeft = this.storageRemoveRecursivelyTaskMap.removeStorageTask(taskID);
-        } else {
-            timeLeft = this.storageRemoveRecursivelyTaskMap.scheduleStorageTaskRemoval(taskID);
-        }
-
-        return new StorageServiceResponse(storageRemoveRecursivelyTask.getExitMessage(), storageRemoveRecursivelyTask.getExitHttpStatus(), storageRemoveRecursivelyTask.getCurrentTarget(), taskID, storageRemoveRecursivelyTask.getLog(), storageRemoveRecursivelyTask.getOnExceptionOptions(), timeLeft);
+        return new StorageServiceResponse(
+            taskID, timeLeft,
+            storageTask.getTaskLog(),
+            storageTask.getExitStatus(),
+            storageTask.getExitMessage(),
+            storageTask.getCurrentTarget(),
+            storageTask.getOnConflictOptions()
+        );
     }
 
-    /* THE REST */
+
+    public StorageServiceResponse downloadDirectoryStorageTreeNode(UUID targetDirectoryID) throws Exception {
+        String errorMessage = null;
+
+        final StorageTreeNode targetStorageTreeNode = this.storageTree.retrieveStorageTreeNode(targetDirectoryID);
+        if (targetStorageTreeNode == null || targetStorageTreeNode.getChildren() == null) {
+            errorMessage = "Target directory ID '%s' is invalid!".formatted(targetDirectoryID.toString());
+            throw new StorageServiceException(errorMessage);
+        }
+
+        return new StorageServiceResponse(
+            null,
+            null,
+            null,
+            HttpStatus.OK,
+            null,
+            targetStorageTreeNode,
+            null
+        );
+    }
+
+    //***************************************************//
+    //*                                                 *//
+    //*   From here on, it be all about THEM tasks!     *//
+    //*                                                 *//
+    //***************************************************//
+
+    public StorageServiceResponse executeStorageTask(UUID taskID, String onConflictAction, Boolean onConflictActionIsPersistent, Boolean cancelTaskExecution) throws Exception {
+        Integer timeLeft = null;
+        String errorMessage = null;
+
+        if (taskID == null) {
+            errorMessage = "Task ID is null!".formatted();
+            throw new StorageServiceException(errorMessage);
+        }
+
+        final StorageTask storageTask;
+        try {
+            storageTask = this.storageTasksMap.getStorageTask(taskID);
+            if (storageTask == null) {
+                errorMessage = "Task ID '%s' is invalid!".formatted(taskID.toString());
+                throw new StorageServiceException(errorMessage);
+            }
+        } catch (Exception exception) {
+            if (cancelTaskExecution != null && cancelTaskExecution == true) {
+                errorMessage = "Task ID '%s' cannot be canceled: %s".formatted(taskID.toString(), exception.getMessage());
+            } else {
+                errorMessage = "Task ID '%s' cannot be executed: %s".formatted(taskID.toString(), exception.getMessage());
+            }
+
+            throw new StorageServiceException(errorMessage, exception);
+        }
+
+        /* Synchronized, setters invisible, whatever... */
+        storageTask.run(onConflictAction, onConflictActionIsPersistent, cancelTaskExecution);
+
+        if (storageTask.getTaskIsDone() == true) {
+            timeLeft = this.storageTasksMap.removeStorageTask(taskID);
+        } else {
+            timeLeft = this.storageTasksMap.scheduleStorageTaskRemoval(taskID);
+        }
+
+        return new StorageServiceResponse(
+            taskID, timeLeft,
+            storageTask.getTaskLog(),
+            storageTask.getExitStatus(),
+            storageTask.getExitMessage(),
+            storageTask.getCurrentTarget(),
+            storageTask.getOnConflictOptions()
+        );
+    }
+
+    //***************************************************//
+    //*                                                 *//
+    //*   From here on, it be all about THEM rests!     *//
+    //*                                                 *//
+    //***************************************************//
 
     /**
      * @return

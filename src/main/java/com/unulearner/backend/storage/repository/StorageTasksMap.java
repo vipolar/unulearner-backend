@@ -7,12 +7,13 @@ import java.util.concurrent.*;
 import org.springframework.stereotype.Service;
 
 import com.unulearner.backend.storage.exceptions.StorageServiceException;
+import com.unulearner.backend.storage.tasks.StorageTask;
 
 @Service
-public class StorageTasksMap<T> {
+public class StorageTasksMap {
     private final Map<UUID, ScheduledFuture<?>> taskRemovalHashMap;
     private final ScheduledExecutorService taskRemovalScheduler;
-    private final Map<UUID, T> taskHashMap;
+    private final Map<UUID, StorageTask> taskHashMap;
 
     public StorageTasksMap() {
         this.taskRemovalScheduler = Executors.newScheduledThreadPool(1);
@@ -20,7 +21,7 @@ public class StorageTasksMap<T> {
         this.taskHashMap = new ConcurrentHashMap<>();
     }
 
-    public UUID addStorageTask(T task) {
+    public UUID addStorageTask(StorageTask task) {
         UUID taskUUID = null;
 
         do {
@@ -31,12 +32,12 @@ public class StorageTasksMap<T> {
         return taskUUID;
     }
 
-    public T getStorageTask(UUID taskUUID) throws Exception {
+    public StorageTask getStorageTask(UUID taskUUID) throws Exception {
         String errorMessage = null;
         ScheduledFuture<?> scheduledFuture = this.taskRemovalHashMap.get(taskUUID);
 
         if (scheduledFuture == null) {
-            errorMessage = String.format("Task ID '%s' is invalid!", taskUUID.toString());
+            errorMessage = "Task ID '%s' is invalid!".formatted(taskUUID.toString());
             throw new StorageServiceException(errorMessage);
         }
 

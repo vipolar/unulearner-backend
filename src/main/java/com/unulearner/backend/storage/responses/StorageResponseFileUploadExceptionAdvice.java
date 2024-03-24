@@ -1,4 +1,4 @@
-package com.unulearner.backend.storage.responses;
+/*package com.unulearner.backend.storage.responses;
 
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExceptionHandler;
@@ -16,3 +16,4 @@ public class StorageResponseFileUploadExceptionAdvice extends ResponseEntityExce
         return ResponseEntity.status(HttpStatus.EXPECTATION_FAILED).body(new StorageServiceResponse("File is too large!", null, null, null, null, null, null));
     }
 }
+*/
