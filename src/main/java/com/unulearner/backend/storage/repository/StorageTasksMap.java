@@ -7,18 +7,24 @@ import java.util.concurrent.*;
 import org.springframework.stereotype.Service;
 
 import com.unulearner.backend.storage.exceptions.StorageServiceException;
+import com.unulearner.backend.storage.properties.StorageProperties;
 import com.unulearner.backend.storage.tasks.StorageTask;
 
 @Service
 public class StorageTasksMap {
     private final Map<UUID, ScheduledFuture<?>> taskRemovalHashMap;
     private final ScheduledExecutorService taskRemovalScheduler;
+    private final StorageProperties storageProperties;
     private final Map<UUID, StorageTask> taskHashMap;
+    private final Integer taskTimeOutInSeconds;
 
-    public StorageTasksMap() {
+    public StorageTasksMap(StorageProperties storageProperties) {
         this.taskRemovalScheduler = Executors.newScheduledThreadPool(1);
         this.taskRemovalHashMap = new ConcurrentHashMap<>();
         this.taskHashMap = new ConcurrentHashMap<>();
+        this.storageProperties = storageProperties;
+
+        this.taskTimeOutInSeconds = this.storageProperties.getTaskTimeOut();
     }
 
     public UUID addStorageTask(StorageTask task) {
@@ -56,10 +62,10 @@ public class StorageTasksMap {
         ScheduledFuture<?> newScheduledFuture = this.taskRemovalScheduler.schedule(() -> {
             this.taskHashMap.remove(taskUUID);
             this.taskRemovalHashMap.remove(taskUUID);
-        }, 120, TimeUnit.SECONDS);
+        }, this.taskTimeOutInSeconds, TimeUnit.SECONDS);
 
         this.taskRemovalHashMap.put(taskUUID, newScheduledFuture);
-        return 90;
+        return this.taskTimeOutInSeconds;
     }
 
     public Integer removeStorageTask(UUID taskUUID) {

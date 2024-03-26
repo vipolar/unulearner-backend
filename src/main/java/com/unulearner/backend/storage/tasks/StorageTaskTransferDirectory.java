@@ -1,127 +1,97 @@
 package com.unulearner.backend.storage.tasks;
 
-import java.time.Instant;
-
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Deque;
 
-import org.springframework.http.HttpStatus;
-import org.springframework.lang.NonNull;
+import java.nio.file.FileAlreadyExistsException;
 
 import com.unulearner.backend.storage.StorageTree;
 import com.unulearner.backend.storage.StorageTreeNode;
+import com.unulearner.backend.storage.exceptions.StorageServiceException;
+import com.unulearner.backend.storage.repository.StorageTasksMap;
+import com.unulearner.backend.storage.statics.StateCode;
 
 public class StorageTaskTransferDirectory extends StorageTask {
-    private final Boolean persistOriginal;
     private StorageTreeNodeTransferReady currentTransferReadyStorageNode;
     private Deque<StorageTreeNodeTransferReady> currentTransferReadyDeque;
+    private final Boolean persistOriginal;
 
-    public StorageTaskTransferDirectory(@NonNull StorageTree storageTree, @NonNull StorageTreeNode targetNode, @NonNull StorageTreeNode destinationNode, Boolean persistOriginal) {
-        super(storageTree, targetNode);
+    public StorageTaskTransferDirectory(StorageTree storageTree, StorageTreeNode targetNode, StorageTreeNode destinationNode, Boolean persistOriginal, StorageTasksMap storageTasksMap) {
+        super(storageTree, targetNode, destinationNode, storageTasksMap);
 
+        this.persistOriginal = persistOriginal;
         this.currentTransferReadyStorageNode = new StorageTreeNodeTransferReady(targetNode, destinationNode);
         this.currentTransferReadyDeque = this.currentTransferReadyStorageNode.getChildrenTRNodes();
-        this.setOnConflictOptions(new ArrayList<>(Arrays.asList(
+        this.setOnExceptionOptions(new ArrayList<>(Arrays.asList(
             new Option("overwrite", "Overwrite", true, false),
             new Option("rename", "Rename", true, true),
             new Option("merge", "Merge", false, true),
             new Option("skip", "Skip", true, true)
-        )));
+        ))); //TODO: HANDLE EXCEPTIONS BETTER!!!
 
-        this.persistOriginal = persistOriginal;
-        final String exitMessage = "Directory transfer task initiated on %s!".formatted(Instant.now().toString());
-        this.setExitStatus(HttpStatus.ACCEPTED);
-        this.setExitMessage(exitMessage);
-        this.logMessage(exitMessage);
-        this.advanceTaskForward();
+        this.setTaskHeading("%s %s to %s".formatted(this.persistOriginal ? "Copy" : "Move", this.getRootTarget().getOnDiskURL(), this.getRootDestination().getOnDiskURL()));
+        this.setTaskCurrentState("Directory %s task was initiated...".formatted(this.persistOriginal ? "copy" : "move"), StateCode.RUNNING);
     }
 
     @Override
-    public synchronized void run(String onConflictAction, Boolean onConflictActionIsPersistent, Boolean cancelTaskExecution) {
-        String exitMessage = null;
+    public synchronized void executeTask(String newOnExceptionAction, Boolean newOnExceptionActionIsPersistent, Boolean cancelTaskExecution) {
+        final StorageTreeNode currentTarget = this.getCurrentTarget();
+        final StorageTreeNode currentDestination = this.getCurrentDestination();
+
+        if (currentTarget == null) {
+            this.setTaskCurrentState("Directory %s task finished successfully!".formatted(this.persistOriginal ? "copy" : "move"), StateCode.COMPLETED);
+            return;
+        }
+
+        if (currentDestination == null) {
+            this.setTaskCurrentState("Directory %s task, in defiance of all logic, has somehow failed... miserably...".formatted(this.persistOriginal ? "copy" : "move"), StateCode.ERROR);
+            return;
+        }
 
         if (cancelTaskExecution != null && cancelTaskExecution == true) {
-            exitMessage = "Directory transfer task cancelled on %s!".formatted(Instant.now().toString());
-            this.setExitStatus(HttpStatus.OK);
-            this.setExitMessage(exitMessage);
-            this.logMessage(exitMessage);
-            this.setTaskAsDone();
-            return;
-        }
-        
-        final StorageTreeNode currentTarget = this.getCurrentTarget();
-        if (currentTarget == null) {
-            exitMessage = "Directory transfer task finished successfully on %s!".formatted(Instant.now().toString());
-            this.setExitStatus(HttpStatus.OK);
-            this.setExitMessage(exitMessage);
-            this.logMessage(exitMessage);
-            this.setTaskAsDone();
+            this.setTaskCurrentState("Directory %s task was cancelled...".formatted(this.persistOriginal ? "copy" : "move"), StateCode.CANCELLED);
             return;
         }
 
-        final StorageTreeNode currentDestination = this.getCurrentDestination();
-        if (currentDestination == null) {
-            exitMessage = "WTF? no destination? on %s!".formatted(Instant.now().toString());
-            this.setExitStatus(HttpStatus.EXPECTATION_FAILED);
-            this.setExitMessage(exitMessage);
-            this.logMessage(exitMessage);
-            return;
+        if (newOnExceptionAction != null) {
+            newOnExceptionActionIsPersistent = newOnExceptionActionIsPersistent != null ? newOnExceptionActionIsPersistent : false;
+            this.setOnExceptionAction(currentTarget, newOnExceptionAction, newOnExceptionActionIsPersistent);
         }
 
-        final String onConflict = this.getOnConflict();
-        if (onConflictAction != null) {
-            onConflictActionIsPersistent = onConflictActionIsPersistent != null ? onConflictActionIsPersistent : false;
-            this.setOnConflict(onConflictAction, onConflictActionIsPersistent);
-        }
+        /* If new rule was set it will be returned here, otherwise we'll get "default" */
+        final String onExceptionAction = this.getOnExceptionAction(currentTarget);
 
         try {
-            if (onConflict != null && onConflict.equals("skip") && this.getAttemptCounter() > 0) {
-                throw new RuntimeException("Ignore this node!");
+            if (onExceptionAction.equals("skip") && this.getAttemptCounter() > 0) {
+                this.setTaskCurrentState("Directory '%s' %s to directory '%s' skipped...".formatted(currentTarget.getOnDiskURL(), this.persistOriginal ? "copy" : "move", currentDestination.getOnDiskURL()), StateCode.RUNNING);
+                this.advanceTask();
+                return;
             }
 
             this.incrementAttemptCounter();
-            this.currentTransferReadyStorageNode.setNewStorageNode(this.storageTreeExecute().commitStorageTreeNode(currentTarget, currentDestination, this.persistOriginal, onConflict));
-            exitMessage = "%s '%s' transfered to '%s' successfully!".formatted(currentTarget.getChildren() != null ? "Directory" : "File", currentTarget.getOnDiskURL(), currentDestination.getOnDiskURL());
-
-            if (this.getAttemptCounter() > 1) {
-                exitMessage.concat(" (Attempt %s)".formatted(this.getAttemptCounter().toString()));
-            }
-
-            this.setExitStatus(HttpStatus.OK);
-            this.setExitMessage(exitMessage);
-            this.logMessage(exitMessage);
+            this.currentTransferReadyStorageNode.setNewStorageNode(this.storageTreeExecute().commitStorageTreeNode(currentTarget, currentDestination, this.persistOriginal, onExceptionAction));
+            this.setTaskCurrentState("%s '%s' was %s to directory '%s' successfully!".formatted(currentTarget.getChildren() != null ? "Directory" : "File", currentTarget.getOnDiskURL(), this.persistOriginal ? "copied" : "moved", currentDestination.getOnDiskURL()), StateCode.RUNNING);
+            this.advanceTask();
+            return;
+        } catch (FileAlreadyExistsException exception) {
+            this.setTaskCurrentState("Directory '%s' could not be %s to directory '%s' - %s".formatted(currentTarget.getOnDiskURL(), this.persistOriginal ? "copied" : "moved", currentDestination.getOnDiskURL(), exception.getMessage()), StateCode.EXCEPTION);
+            return; //TODO: HANDLE EXCEPTIONS BETTER!!!
+        } catch (StorageServiceException exception) {
+            this.setTaskCurrentState("Directory '%s' could not be %s to directory '%s' - %s".formatted(currentTarget.getOnDiskURL(), this.persistOriginal ? "copied" : "moved", currentDestination.getOnDiskURL(), exception.getMessage()), StateCode.EXCEPTION);
+            return;
         } catch (Exception exception) {
-            if (onConflict != null && onConflict.equals("skip")) {
-                exitMessage = "%s '%s' transfer to '%s' directory skipped!".formatted(currentTarget.getChildren() != null ? "Directory" : "File", currentTarget.getOnDiskURL(), currentDestination.getOnDiskURL());
-
-                if (this.getAttemptCounter() > 1) {
-                    exitMessage.concat(" (Attempt %s)".formatted(this.getAttemptCounter().toString()));
-                }
-
-                this.setExitStatus(HttpStatus.OK);
-                this.setExitMessage(exitMessage);
-                this.logMessage(exitMessage);
-            } else {
-                exitMessage = "%s '%s' could not be transfered to '%s' directory: %s".formatted(currentTarget.getChildren() != null ? "Directory" : "File", currentTarget.getOnDiskURL(), currentDestination.getOnDiskURL(), exception.getMessage());
-                this.setExitStatus(HttpStatus.UNPROCESSABLE_ENTITY);
-                this.setExitMessage(exitMessage);
-                this.logMessage(exitMessage);
-                return; /* Failure!!! */
-            }
+            this.setTaskCurrentState("Directory '%s' could not be %s to directory '%s' - %s".formatted(currentTarget.getOnDiskURL(), this.persistOriginal ? "copied" : "moved", currentDestination.getOnDiskURL(), exception.getMessage()), this.getAttemptCounter() > 3 ? StateCode.ERROR : StateCode.EXCEPTION);
+            return;
         }
-
-        if (!this.onConflictIsPersistent()) {
-            this.resetOnConflict();
-        }
-
-        this.resetAttemptCounter();
-        this.advanceTaskForward();
     }
 
     @Override
-    protected void advanceTaskForward() {
+    protected void advanceTask() {
+        this.resetOnExceptionAction(this.getCurrentTarget());
+        this.resetAttemptCounter();
+
         while (this.currentTransferReadyDeque != null && this.currentTransferReadyDeque.peekFirst() == null) {
             this.currentTransferReadyStorageNode = this.currentTransferReadyStorageNode.getParentTRNode();
 

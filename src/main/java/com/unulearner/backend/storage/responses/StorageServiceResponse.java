@@ -1,95 +1,58 @@
 package com.unulearner.backend.storage.responses;
 
-import java.util.List;
+import java.time.Instant;
 import java.util.UUID;
 
-import org.springframework.http.HttpStatus;
-import org.springframework.lang.NonNull;
-
-import com.unulearner.backend.storage.StorageTreeNode;
-import com.unulearner.backend.storage.tasks.StorageTask.Option;
+import com.unulearner.backend.storage.statics.StateCode;
 
 public class StorageServiceResponse {
-    private UUID taskUUID;
-    private String message;
-    private List<String> log;
-    private HttpStatus status;
-    private StorageTreeNode node;
-    private Integer timeToRespond;
-    private List<Option> onConflict;
+    private final UUID taskID;
+    private final String message;
+    private final Integer timeLeft;
+    private final Instant timeStamp;
+    private final String taskHeading;
+    private final StateCode taskState;
 
-    public UUID getTaskUUID() {
-        return taskUUID;
-    }
-
-    public void setTaskUUID(UUID taskUUID) {
-        this.taskUUID = taskUUID;
+    public UUID getTaskID() {
+        return this.taskID;
     }
 
     public String getMessage() {
-        return message;
+        return this.message;
     }
 
-    public void setMessage(String message) {
-        this.message = message;
+    public Integer getTimeLeft() {
+        return this.timeLeft;
     }
 
-    public List<String> getLog() {
-        return log;
+    public Instant getTimeStamp() {
+        return this.timeStamp;
     }
 
-    public void setLog(List<String> log) {
-        this.log = log;
+    public String getTaskHeading() {
+        return this.taskHeading;
     }
 
-    public @NonNull HttpStatus getStatus() {
-        if (this.status != null) {
-            return this.status;
-        }
-
-        return HttpStatus.INTERNAL_SERVER_ERROR;
-    }
-
-    public void setStatus(HttpStatus status) {
-        this.status = status;
-    }
-
-    public StorageTreeNode getNode() {
-        return node;
-    }
-
-    public void setNode(StorageTreeNode node) {
-        this.node = node;
-    }
-
-    public Integer getTimeToRespond() {
-        return timeToRespond;
-    }
-
-    public void setTimeToRespond(Integer timeToRespond) {
-        this.timeToRespond = timeToRespond;
-    }
-
-    public List<Option> getOnConflict() {
-        return onConflict;
-    }
-
-    public void setOnConflict(List<Option> onConflict) {
-        this.onConflict = onConflict;
+    public StateCode getTaskState() {
+        return this.taskState;
     }
 
     //TODO: remove the whole thing so this is removed!!!
     public StorageServiceResponse(String message) {
+        this.taskID = null;
         this.message = message;
+        this.timeLeft = null;
+        this.taskState = null;
+        this.timeStamp = null;
+        this.taskHeading = null;
     }
 
-    public StorageServiceResponse(UUID taskUUID, Integer time, List<String> log, HttpStatus status, String message, StorageTreeNode node,  List<Option> onConflict) {
-        this.log = log;
-        this.node = node;
-        this.status = status;
+    public StorageServiceResponse(UUID taskID, String taskHeading, String message, Integer timeLeft, StateCode taskState) {
+        this.taskID = taskID;
         this.message = message;
-        this.taskUUID = taskUUID;
-        this.timeToRespond = time;
-        this.onConflict = onConflict;
+        this.timeLeft = timeLeft;
+        this.taskState = taskState;
+        this.timeStamp = Instant.now();
+        this.taskHeading = taskHeading;
     }
 }
