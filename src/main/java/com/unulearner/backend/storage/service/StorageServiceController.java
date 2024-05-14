@@ -15,21 +15,25 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseBody;
 
-import java.nio.file.FileAlreadyExistsException;
-
-import org.springframework.beans.factory.annotation.Autowired;
-
 import com.unulearner.backend.storage.StorageTreeNode;
+import com.unulearner.backend.storage.properties.StorageProperties;
 import com.unulearner.backend.storage.responses.StorageServiceError;
 import com.unulearner.backend.storage.responses.StorageServiceResponse;
 
 @Controller
 @RequestMapping(path = "/storage")
 public class StorageServiceController {
+    private final StorageServiceImplementation storageService;
+    private final StorageProperties storageProperties;
+    private final Boolean debugPrintStackTrace;
 
-    @Autowired
-    StorageServiceImplementation storageService;
-    private final Boolean debugPrintStackTrace = true;
+    public StorageServiceController(StorageServiceImplementation storageService, StorageProperties storageProperties) {
+        this.storageService = storageService;
+        this.storageProperties = storageProperties;
+
+        /* We'll be getting some more storage properties here (mostly about logging) */
+        this.debugPrintStackTrace = this.storageProperties.getDebugPrintStackTrace();
+    }
 
     //**********************************************************//
     //*                                                        *//
@@ -38,74 +42,52 @@ public class StorageServiceController {
     //**********************************************************//
 
     /**
-     * @param content
-     * @param description
-     * @param destinationDirectoryID
-     * @param onConflict
-     * @return
+     * @param content the file itself...
+     * @param description of the file (storage node)
+     * @param destinationDirectoryID UUID of the directory to upload to
+     * @return <b>{@code ResponseEntity}</b> wrapping a <b>{@code StorageServiceResponse}</b> containing the appropriate <b><i>{@code StorageTreeNode(s)}</i></b> or a <b>{@code StorageServiceError}</b> containing the <b><i>{@code !error message!}</i></b>
      */
-    @PostMapping("/file/add/to/{destinationDirectoryID}")
-    public ResponseEntity<?> fileUpload(
-        @RequestParam MultipartFile content,
-        @RequestParam String description,
+    @PostMapping("/upload/file/to/{destinationDirectoryID}")
+    public ResponseEntity<?> uploadFile(
         @PathVariable UUID destinationDirectoryID,
-        @RequestParam(name = "conflict", defaultValue = "default", required = false) String onConflict) {
-
-        String errorMessage = null;
-        StorageTreeNode returnValue = null;
-        HttpStatus status = HttpStatus.CREATED;
-        //TODO: rework!
+        @RequestParam(name = "content") MultipartFile content,
+        @RequestParam(name = "description") String description) {
 
         try {
-            returnValue = storageService.createFileStorageTreeNode(content, description, destinationDirectoryID, onConflict);
-            return new ResponseEntity<>(returnValue, status);
-        } catch (Exception fileUploadException) {
-            if (fileUploadException instanceof FileAlreadyExistsException) {
-                status = HttpStatus.CONFLICT;
-            } else {
-                status = HttpStatus.EXPECTATION_FAILED;
+            final StorageServiceResponse response = storageService.createFileStorageTreeNode(content, description, destinationDirectoryID);
+            return new ResponseEntity<StorageServiceResponse>(response, HttpStatus.OK);
+        } catch (Exception exception) {
+            if (debugPrintStackTrace) {
+                exception.printStackTrace();
             }
 
-            if (debugPrintStackTrace) {fileUploadException.printStackTrace();}
-            errorMessage = "Failed to upload file '%s' to '%s' directory! Error: %s".formatted(content.getOriginalFilename(), destinationDirectoryID.toString(), fileUploadException.getMessage());
-            return new ResponseEntity<>(new StorageServiceResponse(errorMessage), status);
+            final StorageServiceError error = new StorageServiceError("Failed to upload file '%s' to '%s' directory! Error: %s".formatted(content.getOriginalFilename(), destinationDirectoryID.toString(), exception.getMessage()));
+            return new ResponseEntity<StorageServiceError>(error, HttpStatus.INTERNAL_SERVER_ERROR);
         }
     }
 
     /**
-     * @param updatedName
-     * @param content
-     * @param updatedDescription
-     * @param targetFileID
-     * @param onConflict
-     * @return
+     * @param targetFileID UUID of the file to update
+     * @param updatedName updated name for the file...
+     * @param updatedDescription updated description for the file (storage node)
+     * @return <b>{@code ResponseEntity}</b> wrapping a <b>{@code StorageServiceResponse}</b> containing the appropriate <b><i>{@code StorageTreeNode(s)}</i></b> or a <b>{@code StorageServiceError}</b> containing the <b><i>{@code !error message!}</i></b>
      */
-    @PostMapping("/file/update/{targetFileID}")
-    public ResponseEntity<?> fileUpdate(
-        @RequestParam(name = "name") String updatedName,
-        @RequestParam(name = "description") String updatedDescription,
-        @RequestParam(required = false) MultipartFile content,
+    @PostMapping("/update/file/{targetFileID}")
+    public ResponseEntity<?> updateFile(
         @PathVariable UUID targetFileID,
-        @RequestParam(name = "conflict", defaultValue = "default", required = false) String onConflict) {
-
-        String errorMessage = null;
-        StorageTreeNode returnValue = null;
-        HttpStatus status = HttpStatus.OK;
-        //TODO: rework!
+        @RequestParam(name = "name", required = false) String updatedName,
+        @RequestParam(name = "description", required = false) String updatedDescription) {
 
         try {
-            returnValue = storageService.updateFileStorageTreeNode(content, updatedName, updatedDescription, targetFileID, onConflict);
-            return new ResponseEntity<>(returnValue, status);
-        } catch (Exception fileUpdateException) {
-            if (fileUpdateException instanceof FileAlreadyExistsException) {
-                status = HttpStatus.CONFLICT;
-            } else {
-                status = HttpStatus.EXPECTATION_FAILED;
+            final StorageServiceResponse response = storageService.updateFileStorageTreeNode(targetFileID, updatedName, updatedDescription);
+            return new ResponseEntity<StorageServiceResponse>(response, HttpStatus.OK);
+        } catch (Exception exception) {
+            if (debugPrintStackTrace) {
+                exception.printStackTrace();
             }
 
-            if (debugPrintStackTrace) {fileUpdateException.printStackTrace();}
-            errorMessage = "Failed to update '%s' file! Error: %s".formatted(targetFileID.toString(), fileUpdateException.getMessage());
-            return new ResponseEntity<>(new StorageServiceResponse(errorMessage), status);
+            final StorageServiceError error = new StorageServiceError("Failed to update '%s' file! Error: %s".formatted(targetFileID.toString(), exception.getMessage()));
+            return new ResponseEntity<StorageServiceError>(error, HttpStatus.INTERNAL_SERVER_ERROR);
         }
     }
 
@@ -205,72 +187,52 @@ public class StorageServiceController {
     //*********************************************************//
 
     /**
-     * @param directory
-     * @param description
-     * @param destinationDirectoryID
-     * @param onConflict
-     * @return
+     * @param directory name of the directory...
+     * @param description of the directory (storage node)
+     * @param destinationDirectoryID UUID of the directory to create in
+     * @return <b>{@code ResponseEntity}</b> wrapping a <b>{@code StorageServiceResponse}</b> containing the appropriate <b><i>{@code StorageTreeNode(s)}</i></b> or a <b>{@code StorageServiceError}</b> containing the <b><i>{@code !error message!}</i></b>
      */
-    @PostMapping("/directory/add/to/{destinationDirectoryID}")
-    public ResponseEntity<?> directoryCreate(
-        @RequestParam String directory,
-        @RequestParam String description,
+    @PostMapping("/create/directory/in/{destinationDirectoryID}")
+    public ResponseEntity<?> createDirectory(
         @PathVariable UUID destinationDirectoryID,
-        @RequestParam(name = "conflict", defaultValue = "default", required = false) String onConflict) {
-
-        String errorMessage = null;
-        StorageTreeNode returnValue = null;
-        HttpStatus status = HttpStatus.CREATED;
-        //TODO: rework!
+        @RequestParam(name = "directory") String directory,
+        @RequestParam(name = "description") String description) {
 
         try {
-            returnValue = storageService.createDirectoryStorageTreeNode(directory, description, destinationDirectoryID, onConflict);
-            return new ResponseEntity<>(returnValue, status);
-        } catch (Exception directoryCreateException) {
-            if (directoryCreateException instanceof FileAlreadyExistsException) {
-                status = HttpStatus.CONFLICT;
-            } else {
-                status = HttpStatus.EXPECTATION_FAILED;
+            final StorageServiceResponse response = storageService.createDirectoryStorageTreeNode(directory, description, destinationDirectoryID);
+            return new ResponseEntity<StorageServiceResponse>(response, HttpStatus.OK);
+        } catch (Exception exception) {
+            if (debugPrintStackTrace) {
+                exception.printStackTrace();
             }
 
-            if (debugPrintStackTrace) {directoryCreateException.printStackTrace();}
-            errorMessage = "Failed to create new directory '%s' and add it to '%s' directory! Error: %s".formatted(directory, destinationDirectoryID.toString(), directoryCreateException.getMessage());
-            return new ResponseEntity<>(new StorageServiceResponse(errorMessage), status);
+            final StorageServiceError error = new StorageServiceError("Failed to create new directory '%s' and add it to '%s' directory! Error: %s".formatted(directory, destinationDirectoryID.toString(), exception.getMessage()));
+            return new ResponseEntity<StorageServiceError>(error, HttpStatus.INTERNAL_SERVER_ERROR);
         }
     }
 
     /**
-     * @param updatedName
-     * @param updatedDescription
-     * @param targetDirectoryID
-     * @param onConflict
-     * @return
+     * @param updatedName updated name for the directory...
+     * @param updatedDescription updated description for the directory (storage node)
+     * @param targetDirectoryID UUID of the directory to update
+     * @return <b>{@code ResponseEntity}</b> wrapping a <b>{@code StorageServiceResponse}</b> containing the appropriate <b><i>{@code StorageTreeNode(s)}</i></b> or a <b>{@code StorageServiceError}</b> containing the <b><i>{@code !error message!}</i></b>
      */
-    @PostMapping("/directory/update/{targetDirectoryID}")
-    public ResponseEntity<?> directoryUpdate(
-        @RequestParam(name = "directory") String updatedName,
-        @RequestParam(name = "description") String updatedDescription,
+    @PostMapping("/update/directory/{targetDirectoryID}")
+    public ResponseEntity<?> updateDirectory(
         @PathVariable UUID targetDirectoryID,
-        @RequestParam(name = "conflict", defaultValue = "default", required = false) String onConflict) {
-
-        String errorMessage = null;
-        StorageTreeNode returnValue = null;
-        HttpStatus status = HttpStatus.OK;
-        //TODO: rework!
+        @RequestParam(name = "directory", required = false) String updatedName,
+        @RequestParam(name = "description", required = false) String updatedDescription) {
 
         try {
-            returnValue = storageService.updateDirectoryStorageTreeNode(updatedName, updatedDescription, targetDirectoryID, onConflict);
-            return new ResponseEntity<>(returnValue, status);
-        } catch (Exception directoryUpdateException) {
-            if (directoryUpdateException instanceof FileAlreadyExistsException) {
-                status = HttpStatus.CONFLICT;
-            } else {
-                status = HttpStatus.EXPECTATION_FAILED;
+            final StorageServiceResponse response = storageService.updateDirectoryStorageTreeNode(targetDirectoryID, updatedName, updatedDescription);
+            return new ResponseEntity<StorageServiceResponse>(response, HttpStatus.OK);
+        } catch (Exception exception) {
+            if (debugPrintStackTrace) {
+                exception.printStackTrace();
             }
 
-            if (debugPrintStackTrace) {directoryUpdateException.printStackTrace();}
-            errorMessage = "Failed to update '%s' directory! Error: %s".formatted(targetDirectoryID.toString(), directoryUpdateException.getMessage());
-            return new ResponseEntity<>(new StorageServiceResponse(errorMessage), status);
+            final StorageServiceError error = new StorageServiceError("Failed to update '%s' directory! Error: %s".formatted(targetDirectoryID.toString(), exception.getMessage()));
+            return new ResponseEntity<StorageServiceError>(error, HttpStatus.INTERNAL_SERVER_ERROR);
         }
     }
 
@@ -370,6 +332,8 @@ public class StorageServiceController {
 
     /**
      * @param taskID UUID of the task to execute
+     * @param skipOnException directive to dictate whether to skip {@code on exception} or not
+     * @param skipOnExceptionIsPersistent whether the aforementioned {@code on-exception skip} applies to just this or all {@code StorageTreeNodes} similar to it 
      * @param onException directive to dictate {@code on-exception action}
      * @param onExceptionIsPersistent whether the aforementioned {@code on-exception action} applies to just this or all {@code StorageTreeNodes} similar to it 
      * @return <b>{@code ResponseEntity}</b> wrapping a <b>{@code StorageServiceResponse}</b> containing the appropriate <b><i>{@code StorageTreeNode(s)}</i></b> or a <b>{@code StorageServiceError}</b> containing the <b><i>{@code !error message!}</i></b>
@@ -377,11 +341,13 @@ public class StorageServiceController {
     @GetMapping("/execute/task/{taskID}")
     public ResponseEntity<?> executeTask(
         @PathVariable(name = "taskID", required = true) UUID taskID,
-        @RequestParam(name = "exception", required = false) String onException,
-        @RequestParam(name = "persistent", required = false) Boolean onExceptionIsPersistent) {
+        @RequestParam(name = "skipOnException", required = false) Boolean skipOnException,
+        @RequestParam(name = "onExceptionAction", required = false) String onExceptionAction,
+        @RequestParam(name = "skipOnExceptionIsPersistent", required = false) Boolean skipOnExceptionIsPersistent,
+        @RequestParam(name = "onExceptionIsActionPersistent", required = false) Boolean onExceptionIsActionPersistent) {
 
         try {
-            final StorageServiceResponse response = storageService.executeStorageTask(taskID, onException, onExceptionIsPersistent, false);
+            final StorageServiceResponse response = storageService.executeStorageTask(taskID, skipOnException, skipOnExceptionIsPersistent, onExceptionAction, onExceptionIsActionPersistent, false);
             return new ResponseEntity<StorageServiceResponse>(response, HttpStatus.OK);
         } catch (Exception exception) {
             if (debugPrintStackTrace) {
@@ -402,7 +368,7 @@ public class StorageServiceController {
         @PathVariable(name = "taskID", required = true) UUID taskID) {
 
         try {
-            final StorageServiceResponse response = storageService.executeStorageTask(taskID, null, null, true);
+            final StorageServiceResponse response = storageService.executeStorageTask(taskID, null, null, null, null, true);
             return new ResponseEntity<StorageServiceResponse>(response, HttpStatus.OK);
         } catch (Exception exception) {
             if (debugPrintStackTrace) {

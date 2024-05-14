@@ -1,8 +1,8 @@
 package com.unulearner.backend.storage;
 
+import java.util.UUID;
 import java.util.Date;
 import java.util.List;
-import java.util.UUID;
 
 import java.nio.file.Path;
 
@@ -11,6 +11,8 @@ import jakarta.persistence.Table;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Column;
 import jakarta.persistence.OneToMany;
+import jakarta.persistence.PrePersist;
+import jakarta.persistence.PreUpdate;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Transient;
 import jakarta.persistence.JoinColumn;
@@ -20,14 +22,17 @@ import jakarta.persistence.GenerationType;
 import org.hibernate.annotations.UpdateTimestamp;
 import org.hibernate.annotations.CreationTimestamp;
 
-import com.fasterxml.jackson.annotation.JsonBackReference;
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonBackReference;
 import com.fasterxml.jackson.annotation.JsonManagedReference;
+import com.unulearner.backend.storage.exceptions.StorageServiceException;
 
 @Entity
 @Table(name = "storage_node")
 public class StorageTreeNode {
-    /* Default constructor */
+    /**
+     * Default constructor. Never meant to be called manually!!!
+     */
     public StorageTreeNode() {}
 
     /**
@@ -40,20 +45,24 @@ public class StorageTreeNode {
     private UUID id;
 
     public UUID getId() {
-        return id;
+        return this.id;
     }
 
     public void setId(UUID id) {
         this.id = id;
     }
 
+    /**
+     * Self-explanatory.
+     * This is a JPA-persisted, JSON-ignored property, beneficial only in creating a node tree.
+     */
     @ManyToOne
     @JsonBackReference
     @JoinColumn(name = "parent", columnDefinition = "UUID", unique = false, nullable = true)
     private StorageTreeNode parent;
 
     public StorageTreeNode getParent() {
-        return parent;
+        return this.parent;
     }
 
     public void setParent(StorageTreeNode parent) {
@@ -69,7 +78,7 @@ public class StorageTreeNode {
     private String onDiskURL;
 
     public String getOnDiskURL() {
-        return onDiskURL;
+        return this.onDiskURL;
     }
 
     public void setOnDiskURL(String onDiskURL) {
@@ -83,7 +92,7 @@ public class StorageTreeNode {
     private String onDiskName;
 
     public String getOnDiskName() {
-        return onDiskName;
+        return this.onDiskName;
     }
 
     public void setOnDiskName(String onDiskName) {
@@ -98,7 +107,7 @@ public class StorageTreeNode {
     private String description;
 
     public String getDescription() {
-        return description;
+        return this.description;
     }
 
     public void setDescription(String description) {
@@ -114,7 +123,7 @@ public class StorageTreeNode {
     private Date created;
 
     public Date getCreated() {
-        return created;
+        return this.created;
     }
 
     /**
@@ -122,11 +131,11 @@ public class StorageTreeNode {
      * This property does not have a setter as it should never be set manually.
      */
     @UpdateTimestamp
-    @Column(name = "updated", columnDefinition = "TIMESTAMP", nullable = false)
+    @Column(name = "updated", columnDefinition = "TIMESTAMP", nullable = false, updatable = true)
     private Date updated;
 
     public Date getUpdated() {
-        return updated;
+        return this.updated;
     }
 
     /**
@@ -140,7 +149,7 @@ public class StorageTreeNode {
     private List<StorageTreeNode> children;
 
     public List<StorageTreeNode> getChildren() {
-        return children;
+        return this.children;
     }
 
     public void setChildren(List<StorageTreeNode> children) {
@@ -148,18 +157,29 @@ public class StorageTreeNode {
     }
 
     /**
-     *
+     * For internal use only!
+     * Full, on-disk path of the file/directory associated with the node.
      */
     @Transient
     @JsonIgnore
-    private Path absolutePath;
+    private Path relativePath;
 
-    public Path getAbsolutePath() {
-        return absolutePath;
+    public Path getRelativePath() {
+        return this.relativePath;
     }
 
-    public void setAbsolutePath(Path absolutePath) {
-        this.absolutePath = absolutePath;
+    public void setRelativePath(Path relativePath) {
+        this.relativePath = relativePath;
+
+        if (relativePath != null) {
+            if (relativePath.isAbsolute()) {
+                this.setOnDiskURL("");
+                this.setOnDiskName("");
+            } else {
+                this.setOnDiskURL(relativePath.toString());
+                this.setOnDiskName(relativePath.getFileName().toString());
+            }
+        }
     }
 
     /**
@@ -167,10 +187,10 @@ public class StorageTreeNode {
      * This is a transient property set by the StorageTree constructor itself, meaning that it is prudent to re-check this on request.
      */
     @Transient
-    private Boolean isAccessible;
+    private Boolean isAccessible = false;
 
     public Boolean getIsAccessible() {
-        return isAccessible;
+        return this.isAccessible;
     }
 
     public void setIsAccessible(Boolean isAccessible) {
@@ -178,19 +198,58 @@ public class StorageTreeNode {
     }
 
     /**
-     * @param name
-     * @param description
-     * @param parent
-     * @param children
-     * @param relativeURL
-     * @param absolutePath
+     * This property is set to true only if the node has been committed/updated by user.
      */
-    public StorageTreeNode(String name, String description, StorageTreeNode parent, List<StorageTreeNode> children, String relativeURL, Path absolutePath) {
-        this.parent = parent;
-        this.onDiskName = name;
-        this.children = children;
-        this.onDiskURL = relativeURL;
-        this.description = description;
-        this.absolutePath = absolutePath;
+    private Boolean isConfirmed = false;
+
+    public Boolean getIsConfirmed() {
+        return this.isConfirmed;
+    }
+
+    public void setIsConfirmed(Boolean isConfirmed) {
+        this.isConfirmed = isConfirmed;
+    }
+
+    public Boolean isDirectory() {
+        return this.children != null;
+    }
+
+    /**
+     * UUID of the task the node is busy with
+     */
+    @Transient
+    @JsonIgnore
+    private UUID busyWith;
+
+    public UUID getBusyWith() {
+        return busyWith;
+    }
+
+    public void setBusyWith(UUID busyWith) {
+        this.busyWith = busyWith;
+    }
+
+    /**
+     * @throws StorageServiceException if the node doesn't have a parent (root node being an exception!)
+     */
+    @PreUpdate
+    @PrePersist
+    public void preCommitChecks() throws StorageServiceException {
+        if (this.parent == null && (!this.onDiskURL.isBlank() || !this.onDiskName.isBlank() || !this.relativePath.isAbsolute())) {
+            throw new StorageServiceException("All nodes must be accompanied by a parent!");
+        }
+    }
+
+    /**
+     * @param parent Self-explanatory. This is a JPA-persisted, JSON-ignored property, beneficial only in creating a node tree.
+     * @param children Self-explanatory. This is a transient property, beneficial only in creating a node tree (mirroring the parent relationship).
+     * @param relativePath Properties derived from it are public, but the path itself is for internal use only! On-disk path of the file/directory associated with the node.
+     * @param description This property serves no purpose in file system management. This property is purely for the human eyes or the search bots (although...)
+     */
+    public StorageTreeNode(StorageTreeNode parent, List<StorageTreeNode> children, Path relativePath, String description) {
+        this.setParent(parent);
+        this.setChildren(children);
+        this.setDescription(description);
+        this.setRelativePath(relativePath);
     }
 }

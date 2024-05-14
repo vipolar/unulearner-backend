@@ -1,18 +1,17 @@
 package com.unulearner.backend.storage.statics;
 
 public enum StateCode{
-    ERROR(-99),
-    CANCELLED(-1),
+    CANCELLED(-99),
+    EXCEPTION(-1),
     RUNNING(0),
-    COMPLETED(1),
-    EXCEPTION(99);
+    COMPLETED(1);
 
     private final int value;
-    StateCode(int value) {
-        this.value = value;
+    StateCode(int v) {
+        this.value = v;
     }
 
     public int getValue() {
-        return value;
+        return this.value;
     }
 }

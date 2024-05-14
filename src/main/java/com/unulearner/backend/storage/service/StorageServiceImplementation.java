@@ -16,14 +16,16 @@ import org.springframework.beans.factory.config.ConfigurableBeanFactory;
 import com.unulearner.backend.storage.StorageTree;
 import com.unulearner.backend.storage.StorageTreeNode;
 import com.unulearner.backend.storage.tasks.StorageTask;
+import com.unulearner.backend.storage.tasks.StorageTaskCreateDirectory;
 import com.unulearner.backend.storage.tasks.StorageTaskDeleteDirectory;
 import com.unulearner.backend.storage.tasks.StorageTaskDeleteFile;
-import com.unulearner.backend.storage.tasks.StorageTaskTransferDirectory;
+import com.unulearner.backend.storage.tasks.StorageTaskTransfer;
 import com.unulearner.backend.storage.tasks.StorageTaskTransferFile;
+import com.unulearner.backend.storage.tasks.StorageTaskUpdateDirectory;
+import com.unulearner.backend.storage.tasks.StorageTaskUpdateFile;
+import com.unulearner.backend.storage.tasks.StorageTaskUploadFile;
 import com.unulearner.backend.storage.responses.StorageServiceResponse;
 import com.unulearner.backend.storage.repository.StorageTasksMap;
-
-import java.nio.file.FileAlreadyExistsException;
 import com.unulearner.backend.storage.exceptions.StorageServiceException;
 
 @Service
@@ -43,7 +45,7 @@ public class StorageServiceImplementation implements StorageService {
     //*                                                        *//
     //**********************************************************//
 
-    public StorageTreeNode createFileStorageTreeNode(MultipartFile newFile, String fileDescription, UUID destinationDirectoryID, String onConflict) throws Exception {
+    public StorageServiceResponse createFileStorageTreeNode(MultipartFile newFile, String fileDescription, UUID destinationDirectoryID) throws Exception {
         String errorMessage = null;
         Path temporaryFilePath = null;
         StorageTreeNode temporaryStorageTreeNode = null;
@@ -54,13 +56,13 @@ public class StorageServiceImplementation implements StorageService {
             throw new StorageServiceException(errorMessage);
         }
 
-        final String fileName = newFile.getOriginalFilename();
-        if (fileName == null || fileName.isBlank()) {
+        String fileName = newFile.getOriginalFilename();
+        if (fileName == null || (fileName = fileName.trim()).isBlank()) {
             errorMessage = "Invalid file name!".formatted();
             throw new StorageServiceException(errorMessage);
         }
 
-        if (fileDescription == null || fileDescription.isBlank()) {
+        if (fileDescription == null || (fileDescription = fileDescription.trim()).isBlank()) {
             errorMessage = "Invalid file description!".formatted();
             throw new StorageServiceException(errorMessage);
         }
@@ -72,25 +74,39 @@ public class StorageServiceImplementation implements StorageService {
                 throw new StorageServiceException(errorMessage);
             }
 
-            //TODO: URL? Parent?
-            temporaryStorageTreeNode = new StorageTreeNode(fileName, fileDescription, null, null, null, temporaryFilePath);
+            temporaryStorageTreeNode = new StorageTreeNode(fileName, fileDescription, null, null, "tmp/%s".formatted(fileName), temporaryFilePath);
         } catch (Exception createTemporaryFileException) {
             errorMessage = "Failed to write '%s' to disk!".formatted(fileName);
             throw new StorageServiceException(errorMessage, createTemporaryFileException);
         }
 
+        final StorageTaskUploadFile storageTask;
         try {
-            return this.storageTree.commitStorageTreeNode(temporaryStorageTreeNode, destinationStorageTreeNode, false, onConflict);
-        } catch (FileAlreadyExistsException nodeAlreadyExistsException) {
-            throw new FileAlreadyExistsException(nodeAlreadyExistsException.getMessage());
-        } catch (StorageServiceException commitStorageTreeNodeException) {
-            errorMessage = "Failed to commit '%s' to permanent storage!".formatted(fileName);
-            throw new StorageServiceException(errorMessage, commitStorageTreeNodeException);
+            storageTask = new StorageTaskUploadFile(this.storageTree, temporaryStorageTreeNode, destinationStorageTreeNode, this.storageTasksMap);
+        } catch (Exception exception) {
+            errorMessage = "File upload task creation failed: %s".formatted(exception.getMessage());
+            throw new StorageServiceException(errorMessage, exception);
         }
+
+        return storageTask.getCurrentState();
     }
 
-    public StorageTreeNode updateFileStorageTreeNode(MultipartFile updatedFile, String updatedName, String updatedDescription, UUID targetFileID, String onConflict) throws Exception {
+    public StorageServiceResponse updateFileStorageTreeNode(UUID targetFileID, String updatedName, String updatedDescription) throws Exception {
         String errorMessage = null;
+
+        if (updatedName != null) { /* null is allowed! */
+            if ((updatedName = updatedName.trim()).isBlank()) {
+                errorMessage = "Invalid file name!".formatted();
+                throw new StorageServiceException(errorMessage);
+            }
+        }
+
+        if (updatedDescription != null) { /* null is allowed! */
+            if ((updatedDescription = updatedDescription.trim()).isBlank()) {
+                errorMessage = "Invalid file description!".formatted();
+                throw new StorageServiceException(errorMessage);
+            }
+        }
 
         final StorageTreeNode targetStorageTreeNode = this.storageTree.retrieveStorageTreeNode(targetFileID);
         if (targetStorageTreeNode == null || targetStorageTreeNode.getChildren() != null) {
@@ -98,18 +114,21 @@ public class StorageServiceImplementation implements StorageService {
             throw new StorageServiceException(errorMessage);
         }
 
-        //TODO: edit logic...
-        final StorageTreeNode temporaryStorageTreeNode = new StorageTreeNode(updatedName, updatedDescription, targetStorageTreeNode.getParent(), targetStorageTreeNode.getChildren(), targetStorageTreeNode.getOnDiskURL(), targetStorageTreeNode.getAbsolutePath());
-        temporaryStorageTreeNode.setId(targetStorageTreeNode.getId());
-
-        try {
-            return this.storageTree.commitStorageTreeNode(temporaryStorageTreeNode, targetStorageTreeNode.getParent(), false, onConflict);
-        } catch (FileAlreadyExistsException nodeAlreadyExistsException) {
-            throw new FileAlreadyExistsException(nodeAlreadyExistsException.getMessage());
-        } catch (Exception commitStorageTreeNodeException) {
-            errorMessage = "Failed to commit changes to '%s' to permanent storage!".formatted(targetStorageTreeNode.getOnDiskName());
-            throw new StorageServiceException(errorMessage, commitStorageTreeNodeException);
+        if ((updatedName != null && updatedName.equals(targetStorageTreeNode.getOnDiskName()))
+        && (updatedDescription != null && updatedDescription.equals(targetStorageTreeNode.getDescription()))) {
+            errorMessage = "Nothing to update here!".formatted();
+            throw new StorageServiceException(errorMessage);
         }
+
+        final StorageTaskUpdateFile storageTask;
+        try {
+            storageTask = new StorageTaskUpdateFile(this.storageTree, updatedName, updatedDescription, targetStorageTreeNode, targetStorageTreeNode.getParent(), this.storageTasksMap);
+        } catch (Exception exception) {
+            errorMessage = "File update task creation failed: %s".formatted(exception.getMessage());
+            throw new StorageServiceException(errorMessage, exception);
+        }
+
+        return storageTask.getCurrentState();
     }
 
     public StorageServiceResponse transferFileStorageTreeNode(UUID targetFileID, UUID destinationDirectoryID, Boolean persistOriginal) throws Exception {
@@ -195,7 +214,7 @@ public class StorageServiceImplementation implements StorageService {
     //*                                                       *//
     //*********************************************************//
 
-    public StorageTreeNode createDirectoryStorageTreeNode(String directoryName, String directoryDescription, UUID destinationDirectoryID, String onConflict) throws Exception {
+    public StorageServiceResponse createDirectoryStorageTreeNode(String directoryName, String directoryDescription, UUID destinationDirectoryID) throws Exception {
         String errorMessage = null;
         Path temporaryDirectoryPath = null;
         StorageTreeNode temporaryStorageTreeNode = null;
@@ -206,36 +225,51 @@ public class StorageServiceImplementation implements StorageService {
             throw new StorageServiceException(errorMessage);
         }
 
-        if (directoryName == null || directoryName.isBlank()) {
+        if (directoryName == null || (directoryName = directoryName.trim()).isBlank()) {
             errorMessage = "Invalid directory name!".formatted();
             throw new StorageServiceException(errorMessage);
         }
 
-        if (directoryDescription == null || directoryDescription.isBlank()) {
+        if (directoryDescription == null || (directoryDescription = directoryDescription.trim()).isBlank()) {
             errorMessage = "Invalid directory description!".formatted();
             throw new StorageServiceException(errorMessage);
         }
 
         try {
             temporaryDirectoryPath = Files.createTempDirectory(directoryName);
-            temporaryStorageTreeNode = new StorageTreeNode(directoryName, directoryDescription, null, null, null, temporaryDirectoryPath);
+            temporaryStorageTreeNode = new StorageTreeNode(directoryName, directoryDescription, null, null, "tmp/%s".formatted(directoryName), temporaryDirectoryPath);
         } catch (Exception createTemporaryDirectoryException) {
             errorMessage = "Failed to write '%s' to disk!".formatted(directoryName);
             throw new StorageServiceException(errorMessage, createTemporaryDirectoryException);
         }
 
+        final StorageTaskCreateDirectory storageTask;
         try {
-            return this.storageTree.commitStorageTreeNode(temporaryStorageTreeNode, destinationStorageTreeNode, false, onConflict);
-        } catch (FileAlreadyExistsException nodeAlreadyExistsException) {
-            throw new FileAlreadyExistsException(nodeAlreadyExistsException.getMessage());
-        } catch (Exception commitStorageTreeNodeException) {
-            errorMessage = "Failed to commit '%s' to permanent storage!".formatted(directoryName);
-            throw new StorageServiceException(errorMessage, commitStorageTreeNodeException);
+            storageTask = new StorageTaskCreateDirectory(this.storageTree, temporaryStorageTreeNode, destinationStorageTreeNode, this.storageTasksMap);
+        } catch (Exception exception) {
+            errorMessage = "File upload task creation failed: %s".formatted(exception.getMessage());
+            throw new StorageServiceException(errorMessage, exception);
         }
+
+        return storageTask.getCurrentState();
     }
 
-    public StorageTreeNode updateDirectoryStorageTreeNode(String updatedName, String updatedDescription, UUID targetDirectoryID, String onConflict) throws Exception {
+    public StorageServiceResponse updateDirectoryStorageTreeNode(UUID targetDirectoryID, String updatedName, String updatedDescription) throws Exception {
         String errorMessage = null;
+
+        if (updatedName != null) { /* null is allowed! */
+            if ((updatedName = updatedName.trim()).isBlank()) {
+                errorMessage = "Invalid file name!".formatted();
+                throw new StorageServiceException(errorMessage);
+            }
+        }
+
+        if (updatedDescription != null) { /* null is allowed! */
+            if ((updatedDescription = updatedDescription.trim()).isBlank()) {
+                errorMessage = "Invalid file description!".formatted();
+                throw new StorageServiceException(errorMessage);
+            }
+        }
 
         final StorageTreeNode targetStorageTreeNode = this.storageTree.retrieveStorageTreeNode(targetDirectoryID);
         if (targetStorageTreeNode == null || targetStorageTreeNode.getChildren() == null) {
@@ -243,18 +277,22 @@ public class StorageServiceImplementation implements StorageService {
             throw new StorageServiceException(errorMessage);
         }
 
-        //TODO: edit logic...
-        final StorageTreeNode temporaryStorageTreeNode = new StorageTreeNode(updatedName, updatedDescription, targetStorageTreeNode.getParent(), targetStorageTreeNode.getChildren(), targetStorageTreeNode.getOnDiskURL(), targetStorageTreeNode.getAbsolutePath());
-        temporaryStorageTreeNode.setId(targetStorageTreeNode.getId());
-
-        try {
-            return this.storageTree.commitStorageTreeNode(temporaryStorageTreeNode, targetStorageTreeNode.getParent(), false, onConflict);
-        } catch (FileAlreadyExistsException nodeAlreadyExistsException) {
-            throw new FileAlreadyExistsException(nodeAlreadyExistsException.getMessage());
-        } catch (Exception commitStorageTreeNodeException) {
-            errorMessage = "Failed to commit changes to '%s' to permanent storage!".formatted(targetStorageTreeNode.getOnDiskName());
-            throw new StorageServiceException(errorMessage, commitStorageTreeNodeException);
+        if ((updatedName != null && updatedName.equals(targetStorageTreeNode.getOnDiskName()))
+        && (updatedDescription != null && updatedDescription.equals(targetStorageTreeNode.getDescription()))) {
+            errorMessage = "Nothing to update here!".formatted();
+            throw new StorageServiceException(errorMessage);
         }
+
+        //TODO: everything about this!!!
+        final StorageTaskUpdateDirectory storageTask;
+        try {
+            storageTask = new StorageTaskUpdateDirectory(this.storageTree, targetStorageTreeNode, targetStorageTreeNode.getParent(), this.storageTasksMap);
+        } catch (Exception exception) {
+            errorMessage = "Directory update task creation failed: %s".formatted(exception.getMessage());
+            throw new StorageServiceException(errorMessage, exception);
+        }
+        
+        return storageTask.getCurrentState();
     }
 
     public StorageServiceResponse transferDirectoryStorageTreeNode(UUID targetDirectoryID, UUID destinationDirectoryID, Boolean persistOriginal) throws Exception {
@@ -272,9 +310,9 @@ public class StorageServiceImplementation implements StorageService {
             throw new StorageServiceException(errorMessage);
         }
 
-        final StorageTaskTransferDirectory storageTask;
+        final StorageTaskTransfer storageTask;
         try {
-            storageTask = new StorageTaskTransferDirectory(this.storageTree, targetStorageTreeNode, destinationStorageTreeNode, persistOriginal, this.storageTasksMap);
+            storageTask = new StorageTaskTransfer(this.storageTree, targetStorageTreeNode, destinationStorageTreeNode, persistOriginal, this.storageTasksMap);
         } catch (Exception exception) {
             errorMessage = "Directory %s task creation failed: %s".formatted(persistOriginal ? "copy" : "move", exception.getMessage());
             throw new StorageServiceException(errorMessage, exception);
@@ -322,8 +360,10 @@ public class StorageServiceImplementation implements StorageService {
     //*                                                 *//
     //***************************************************//
 
-    public StorageServiceResponse executeStorageTask(UUID taskID, String onConflictAction, Boolean onConflictActionIsPersistent, Boolean cancelTaskExecution) throws Exception {
+    public StorageServiceResponse executeStorageTask(UUID taskID, Boolean skipOnException, Boolean skipOnExceptionIsPersistent, String onExceptionAction, Boolean onExceptionActionIsPersistent, Boolean cancelTaskExecution) throws Exception {
         String errorMessage = null;
+
+        /* TODO: pass everything to this fucker! */
 
         if (taskID == null) {
             errorMessage = "Task ID is null!".formatted();
@@ -333,6 +373,7 @@ public class StorageServiceImplementation implements StorageService {
         final StorageTask storageTask;
         try {
             storageTask = this.storageTasksMap.getStorageTask(taskID);
+
             if (storageTask == null) {
                 errorMessage = "Task ID '%s' is invalid!".formatted(taskID.toString());
                 throw new StorageServiceException(errorMessage);
@@ -348,7 +389,7 @@ public class StorageServiceImplementation implements StorageService {
         }
 
         /* Synchronized, setters invisible, whatever... */
-        storageTask.executeTask(onConflictAction, onConflictActionIsPersistent, cancelTaskExecution);
+        storageTask.executeTask(skipOnException, skipOnExceptionIsPersistent, onExceptionAction, onExceptionActionIsPersistent, cancelTaskExecution);
 
         return storageTask.getCurrentState();
     }

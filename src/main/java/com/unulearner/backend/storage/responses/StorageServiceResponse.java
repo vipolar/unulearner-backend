@@ -4,6 +4,7 @@ import java.time.Instant;
 import java.util.UUID;
 
 import com.unulearner.backend.storage.statics.StateCode;
+import com.unulearner.backend.storage.statics.OnException;
 
 public class StorageServiceResponse {
     private final UUID taskID;
@@ -12,6 +13,7 @@ public class StorageServiceResponse {
     private final Instant timeStamp;
     private final String taskHeading;
     private final StateCode taskState;
+    private final OnException options;
 
     public UUID getTaskID() {
         return this.taskID;
@@ -37,6 +39,10 @@ public class StorageServiceResponse {
         return this.taskState;
     }
 
+    public OnException getOptions() {
+        return this.options;
+    }
+
     //TODO: remove the whole thing so this is removed!!!
     public StorageServiceResponse(String message) {
         this.taskID = null;
@@ -45,11 +51,13 @@ public class StorageServiceResponse {
         this.taskState = null;
         this.timeStamp = null;
         this.taskHeading = null;
+        this.options = null;
     }
 
-    public StorageServiceResponse(UUID taskID, String taskHeading, String message, Integer timeLeft, StateCode taskState) {
+    public StorageServiceResponse(UUID taskID, String taskHeading, String message, Integer timeLeft, OnException options, StateCode taskState) {
         this.taskID = taskID;
         this.message = message;
+        this.options = options;
         this.timeLeft = timeLeft;
         this.taskState = taskState;
         this.timeStamp = Instant.now();

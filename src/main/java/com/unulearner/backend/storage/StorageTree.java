@@ -2,15 +2,17 @@ package com.unulearner.backend.storage;
 
 import java.util.List;
 import java.util.UUID;
+import java.util.Deque;
+import java.util.HashMap;
 import java.util.Optional;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.ArrayDeque;
 import java.util.Collections;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
+
+import java.io.IOException;
 
 import java.nio.file.Path;
-import java.io.IOException;
 import java.nio.file.Paths;
 import java.nio.file.Files;
 import java.nio.file.FileVisitResult;
@@ -22,89 +24,60 @@ import java.nio.file.attribute.BasicFileAttributes;
 import com.unulearner.backend.storage.exceptions.StorageServiceException;
 import com.unulearner.backend.storage.properties.StorageProperties;
 import com.unulearner.backend.storage.repository.StorageRepository;
-import com.unulearner.backend.storage.repository.StorageHashMap;
 import com.unulearner.backend.storage.statics.StoragePath;
 
 import org.springframework.stereotype.Service;
 
 @Service
 public class StorageTree {
-    private final StorageProperties storageProperties;
+    private final HashMap<UUID, StorageTreeNode> storageHashMap;
+    private final StorageProperties storageTreeProperties;
     private final StorageRepository storageRepository;
-    private StorageHashMap storageTreeHashMap;
-    private StorageTreeNode storageTreeRoot;
-    private Path storageTreeDirectoryPath;
+    private final StorageTreeNode storageRootNode;
+    private final Path storageRootDirectoryPath;
 
-    public StorageTree(StorageProperties storageProperties, StorageRepository storageRepository) {
-        this.storageProperties = storageProperties;
+    public StorageTree(StorageProperties storageTreeProperties, StorageRepository storageRepository) {
+        this.storageHashMap = new HashMap<UUID, StorageTreeNode>();
+        this.storageTreeProperties = storageTreeProperties;
         this.storageRepository = storageRepository;
 
         try {
-            buildStorageTree();
-        } catch (Exception buildStorageTreeException) {
-            /* Exception is re-thrown and left unhandled! App shutdown is THE expected behavior! */
-            String errorMessage = "Failed to initialize storage tree!".formatted();
-            throw new RuntimeException(errorMessage, buildStorageTreeException);
-        }
-    }
-    
-    public void buildStorageTree() throws Exception {
-        String errorMessage = null;
-        Path rootDirectoryPathTemp = null;
-        StorageTreeNode temporaryStorageNode;
+            final String rootDirectoryPath = this.storageTreeProperties.getRootDirectory();
+            final String rootDirectoryDescription = this.storageTreeProperties.getRootDirectoryDescription();
 
-        final Path rootDirectoryPath;
-        final StorageTreeNode rootStorageTreeNode;
-        final StorageHashMap rootDirectoryThreeHashMap;
-        final List<StorageTreeNode> rootDirectoryNodeStack;
-        final String rootDirectoryPersistentDefaultURL = "";
-        final StorageRepository storageRepository = this.storageRepository;
-        final String rootDirectoryName = this.storageProperties.getRootDirectory();
-        final String rootDirectoryDescription = this.storageProperties.getRootDirectoryDescription();
-        final String recoveredFileStorageTreeNodeDescription = this.storageProperties.getRecoveredFileDescription();
-        final String recoveredDirectoryStorageTreeNodeDescription = this.storageProperties.getRecoveredDirectoryDescription();
-        
-        try {
-            rootDirectoryThreeHashMap = new StorageHashMap();
-            rootDirectoryPathTemp = Paths.get(rootDirectoryName);
-            rootDirectoryNodeStack = new ArrayList<StorageTreeNode>();
-
-            /* Temporary variable for rootDirectoryPath is needed because all assignments here must be final */
-            if (!StoragePath.isValidDirectory(rootDirectoryPathTemp, false)) {
-                rootDirectoryPath = Files.createDirectories(rootDirectoryPathTemp);
-            } else {
-                rootDirectoryPath = rootDirectoryPathTemp;
+            this.storageRootDirectoryPath = (Files.createDirectories(Paths.get(rootDirectoryPath))).toAbsolutePath();
+            if (!StoragePath.isValidDirectory(this.storageRootDirectoryPath, false)) {
+                throw new StorageServiceException("Root (%s) directory could not be created!".formatted(rootDirectoryPath));
             }
 
-            /* Temporary variable for rootStorageTreeNode is needed because all assignments here must be final */
-            final Optional<StorageTreeNode> nullableStorageTreeNode = storageRepository.findByOnDiskURL(rootDirectoryPersistentDefaultURL);
+            /* Empty URL is the best descriptor for the root node as URL is a unique (strictly enforced) property */
+            final Optional<StorageTreeNode> nullableStorageTreeNode = this.storageRepository.findByOnDiskURL("");
             if (nullableStorageTreeNode.isPresent()) {
-                temporaryStorageNode = nullableStorageTreeNode.get();
+                this.storageRootNode = nullableStorageTreeNode.get();
+                this.storageRootNode.setRelativePath(this.storageRootDirectoryPath);
+                this.storageRootNode.setChildren(this.storageRepository.findAllByParent(this.storageRootNode));
             } else {
-                temporaryStorageNode = new StorageTreeNode(rootDirectoryPath.getFileName().toString(), rootDirectoryDescription, null, new ArrayList<StorageTreeNode>(), rootDirectoryPersistentDefaultURL, rootDirectoryPath);
-                temporaryStorageNode = storageRepository.save(temporaryStorageNode);
+                this.storageRootNode = this.storageRepository.save(new StorageTreeNode(null, new ArrayList<StorageTreeNode>(), this.storageRootDirectoryPath, rootDirectoryDescription));
             }
 
-            temporaryStorageNode.setIsAccessible(true);
-            rootStorageTreeNode = temporaryStorageNode;
-
-            rootDirectoryThreeHashMap.put(rootStorageTreeNode.getId(), rootStorageTreeNode.getOnDiskURL(), rootStorageTreeNode.getAbsolutePath(), rootStorageTreeNode);
-        } catch (Exception StorageTreeInitializationError) {
-            errorMessage = "Failed to initialize the '%s' directory storage tree!".formatted(rootDirectoryName);
-            throw new StorageServiceException(errorMessage, StorageTreeInitializationError);
+            this.storageHashMap.put(this.storageRootNode.getId(), this.storageRootNode);
+            this.storageRootNode.setIsAccessible(true);
+        } catch (Exception exception) {
+            throw new RuntimeException(exception.getMessage());
         }
 
         try {
+            final StorageTreeNode rootStorageTreeNode = this.storageRootNode;
+            final Path rootDirectoryPath = this.storageRootNode.getRelativePath();
+            final HashMap<UUID, StorageTreeNode> storageHashMap = this.storageHashMap;
+            final Deque<StorageTreeNode> rootDirectoryNodeDeque = new ArrayDeque<StorageTreeNode>();
+            final String recoveredFileStorageTreeNodeDescription = this.storageTreeProperties.getRecoveredFileDescription();
+            final String recoveredDirectoryStorageTreeNodeDescription = this.storageTreeProperties.getRecoveredDirectoryDescription();
+
             Files.walkFileTree(rootDirectoryPath, new SimpleFileVisitor<Path>() {
                 @Override
                 public FileVisitResult visitFile(Path filePath, BasicFileAttributes attrs) {
                     String exceptionMessage = null;
-                    String targetStorageTreeNodeURL = null;
-                    String targetStorageTreeNodeName = null;
-                    StorageTreeNode targetStorageTreeNode = null;
-                    Boolean targetStorageTreeNodeIsAccessible = null;
-                    StorageTreeNode targetStorageTreeNodeParent = null;
-                    Optional<StorageTreeNode> nullableStorageTreeNode = null;
 
                     try {
                         if (!StoragePath.isValidFile(filePath)) {
@@ -112,46 +85,44 @@ public class StorageTree {
                             throw new StorageServiceException(exceptionMessage);
                         }
 
-                        targetStorageTreeNodeURL = rootDirectoryPath.relativize(filePath).toString();
-                        nullableStorageTreeNode = storageRepository.findByOnDiskURL(targetStorageTreeNodeURL);
+                        final StorageTreeNode targetStorageTreeNode;
+                        final String targetStorageTreeNodeURL = rootDirectoryPath.relativize(filePath).toString();
+                        final Optional<StorageTreeNode> nullableStorageTreeNode = storageRepository.findByOnDiskURL(targetStorageTreeNodeURL);
                         if (nullableStorageTreeNode.isPresent()) {
                             targetStorageTreeNode = nullableStorageTreeNode.get();
+                            targetStorageTreeNode.setRelativePath(filePath.toAbsolutePath());
 
-                            if (!rootDirectoryNodeStack.isEmpty() && !rootDirectoryNodeStack.get(rootDirectoryNodeStack.size() - 1).getId().equals(targetStorageTreeNode.getParent().getId())) {
-                                exceptionMessage = "File '%s' is a child of '%s' directory yet the relationship is not reciprocated on the persistent level!".formatted(targetStorageTreeNode.getOnDiskURL(), rootDirectoryNodeStack.get(rootDirectoryNodeStack.size() - 1));
+                            if (!rootDirectoryNodeDeque.peekLast().getId().equals(targetStorageTreeNode.getParent().getId())) {
+                                exceptionMessage = "File '%s' is a child of '%s' directory yet the relationship is not reciprocated on the persistent level!".formatted(targetStorageTreeNode.getOnDiskURL(), rootDirectoryNodeDeque.peekLast().getOnDiskURL());
                                 throw new StorageServiceException(exceptionMessage);
                             }
                         } else {
-                            targetStorageTreeNodeName = filePath.getFileName().toString();
-                            targetStorageTreeNodeParent = !rootDirectoryNodeStack.isEmpty() ? rootDirectoryNodeStack.get(rootDirectoryNodeStack.size() - 1) : null;
-                            targetStorageTreeNode = new StorageTreeNode(targetStorageTreeNodeName, recoveredFileStorageTreeNodeDescription, targetStorageTreeNodeParent, null, targetStorageTreeNodeURL, filePath);
-                            targetStorageTreeNode = storageRepository.save(targetStorageTreeNode);
+                            targetStorageTreeNode = storageRepository.save(new StorageTreeNode(rootDirectoryNodeDeque.peekLast(), null, rootDirectoryPath.relativize(filePath), recoveredFileStorageTreeNodeDescription));
                         }
 
-                        if (!rootDirectoryNodeStack.isEmpty()) {
-                            for (StorageTreeNode iNode : rootDirectoryNodeStack.get(rootDirectoryNodeStack.size() - 1).getChildren()) {
-                                if (iNode.getId().equals(targetStorageTreeNode.getId())) {
-                                    targetStorageTreeNodeIsAccessible = true;
-                                    break;
-                                }
-                            }
-
-                            if (targetStorageTreeNodeIsAccessible == null || targetStorageTreeNodeIsAccessible == false) {
-                                rootDirectoryNodeStack.get(rootDirectoryNodeStack.size() - 1).getChildren().add(targetStorageTreeNode);
-                                targetStorageTreeNodeIsAccessible = true;
-                            }
-
-                            if (rootDirectoryThreeHashMap.put(targetStorageTreeNode.getId(), targetStorageTreeNode.getOnDiskURL(), targetStorageTreeNode.getAbsolutePath(), targetStorageTreeNode) != null) {
-                                exceptionMessage = "File node '%s' is already present on the hashmap!".formatted(targetStorageTreeNodeURL);
-                                throw new StorageServiceException(exceptionMessage);
+                        /* Here we match the possibly new node with the node pulled from the db if such a match can be found */
+                        final List<StorageTreeNode> parentStorageTreeNodesChildren = rootDirectoryNodeDeque.peekLast().getChildren();
+                        for (int iNode = 0; iNode < parentStorageTreeNodesChildren.size(); iNode++) {
+                            if (targetStorageTreeNode.getId().equals(parentStorageTreeNodesChildren.get(iNode).getId())) {
+                                parentStorageTreeNodesChildren.set(iNode, targetStorageTreeNode);
+                                targetStorageTreeNode.setIsAccessible(true);
                             }
                         }
 
-                        targetStorageTreeNode.setIsAccessible(targetStorageTreeNodeIsAccessible);
-                    } catch (Exception retrieveStorageTreeNodeException) {
-                        exceptionMessage = "Failed to add file '%s' to the storage tree! Error: %s".formatted(targetStorageTreeNodeURL, retrieveStorageTreeNodeException.getMessage());
+                        /* In case of no match we just append it to the children (will be sorted later) */
+                        if (targetStorageTreeNode.getIsAccessible() == false) {
+                            parentStorageTreeNodesChildren.add(targetStorageTreeNode);
+                            targetStorageTreeNode.setIsAccessible(true);
+                        }
+
+                        if (storageHashMap.put(targetStorageTreeNode.getId(), targetStorageTreeNode) != null) {
+                            exceptionMessage = "File node '%s' is already present on the hashmap!".formatted(targetStorageTreeNodeURL);
+                            throw new StorageServiceException(exceptionMessage);
+                        }
+                    } catch (Exception exception) {
+                        exceptionMessage = "Failed to add file '%s' to the storage tree! Error: %s".formatted(filePath.toString(), exception.getMessage());
                         //TODO: LOG(exceptionMessage);
-                        retrieveStorageTreeNodeException.printStackTrace();
+                        exception.printStackTrace();
                         return FileVisitResult.CONTINUE;
                     }
 
@@ -161,68 +132,66 @@ public class StorageTree {
                 @Override
                 public FileVisitResult preVisitDirectory(Path directoryPath, BasicFileAttributes attrs) {
                     String exceptionMessage = null;
-                    String targetStorageTreeNodeURL = null;
-                    String targetStorageTreeNodeName = null;
-                    StorageTreeNode targetStorageTreeNode = null;
-                    Boolean targetStorageTreeNodeIsAccessible = null;
-                    StorageTreeNode targetStorageTreeNodeParent = null;
-                    Optional<StorageTreeNode> nullableStorageTreeNode = null;
 
                     try {
-                        if (directoryPath.equals(rootStorageTreeNode.getAbsolutePath())) {
-                            rootDirectoryNodeStack.add(rootStorageTreeNode);
-                            return FileVisitResult.CONTINUE;
-                        }
-
                         if (!StoragePath.isValidDirectory(directoryPath)) {
                             exceptionMessage = "Directory '%s' cannot be accessed!".formatted(directoryPath.getFileName().toString());
                             throw new StorageServiceException(exceptionMessage);
                         }
 
-                        targetStorageTreeNodeURL = rootDirectoryPath.relativize(directoryPath).toString();
-                        nullableStorageTreeNode = storageRepository.findByOnDiskURL(targetStorageTreeNodeURL);
+                        if (rootDirectoryNodeDeque.peekLast() == null) {
+                            if (rootDirectoryPath.equals(directoryPath)) {
+                                rootDirectoryNodeDeque.offer(rootStorageTreeNode);
+                                return FileVisitResult.CONTINUE;
+                            }
+
+                            exceptionMessage = "Directory '%s' is trying to pass as a root but is not root!".formatted(directoryPath);
+                            throw new StorageServiceException(exceptionMessage);
+                        }
+
+                        final StorageTreeNode targetStorageTreeNode;
+                        final String targetStorageTreeNodeURL = rootDirectoryPath.relativize(directoryPath).toString();
+                        final Optional<StorageTreeNode> nullableStorageTreeNode = storageRepository.findByOnDiskURL(targetStorageTreeNodeURL);
                         if (nullableStorageTreeNode.isPresent()) {
                             targetStorageTreeNode = nullableStorageTreeNode.get();
-                            
-                            if (!rootDirectoryNodeStack.isEmpty() && !rootDirectoryNodeStack.get(rootDirectoryNodeStack.size() - 1).getId().equals(targetStorageTreeNode.getParent().getId())) {
-                                exceptionMessage = "Directory '%s' is a child of '%s' directory yet the relationship is not reciprocated on the persistent level!".formatted(targetStorageTreeNode.getOnDiskURL(), rootDirectoryNodeStack.get(rootDirectoryNodeStack.size() - 1));
+                            targetStorageTreeNode.setRelativePath(directoryPath.toAbsolutePath());
+
+                            if (!rootDirectoryNodeDeque.peekLast().getId().equals(targetStorageTreeNode.getParent().getId())) {
+                                exceptionMessage = "Directory '%s' is a child of '%s' directory yet the relationship is not reciprocated on the persistent level!".formatted(targetStorageTreeNode.getOnDiskURL(), rootDirectoryNodeDeque.peekLast().getOnDiskURL());
                                 throw new StorageServiceException(exceptionMessage);
                             }
 
                             /* This might pull some inaccessible nodes, that is why all of the children will be checked as this directory is crawled through! */
                             targetStorageTreeNode.setChildren(storageRepository.findAllByParent(targetStorageTreeNode));
                         } else {
-                            targetStorageTreeNodeName = directoryPath.getFileName().toString();
-                            targetStorageTreeNodeParent = !rootDirectoryNodeStack.isEmpty() ? rootDirectoryNodeStack.get(rootDirectoryNodeStack.size() - 1) : null;
-                            targetStorageTreeNode = new StorageTreeNode(targetStorageTreeNodeName, recoveredDirectoryStorageTreeNodeDescription, targetStorageTreeNodeParent, new ArrayList<StorageTreeNode>(), targetStorageTreeNodeURL, directoryPath);
-                            targetStorageTreeNode = storageRepository.save(targetStorageTreeNode);
+                            targetStorageTreeNode = storageRepository.save(new StorageTreeNode(rootDirectoryNodeDeque.peekLast(), new ArrayList<StorageTreeNode>(), rootDirectoryPath.relativize(directoryPath), recoveredDirectoryStorageTreeNodeDescription));
                         }
 
-                        if (!rootDirectoryNodeStack.isEmpty()) {
-                            for (StorageTreeNode iNode : rootDirectoryNodeStack.get(rootDirectoryNodeStack.size() - 1).getChildren()) {
-                                if (iNode.getId().equals(targetStorageTreeNode.getId())) {
-                                    targetStorageTreeNodeIsAccessible = true;
-                                    break;
-                                }
-                            }
-
-                            if (targetStorageTreeNodeIsAccessible == null || targetStorageTreeNodeIsAccessible == false) {
-                                rootDirectoryNodeStack.get(rootDirectoryNodeStack.size() - 1).getChildren().add(targetStorageTreeNode);
-                                targetStorageTreeNodeIsAccessible = true;
-                            }
-
-                            if (rootDirectoryThreeHashMap.put(targetStorageTreeNode.getId(), targetStorageTreeNode.getOnDiskURL(), targetStorageTreeNode.getAbsolutePath(), targetStorageTreeNode) != null) {
-                                exceptionMessage = "Directory node '%s' is already present on the hashmap!".formatted(targetStorageTreeNodeURL);
-                                throw new StorageServiceException(exceptionMessage);
+                        /* Here we match the possibly new node with the node pulled from the db if such a match can be found */
+                        final List<StorageTreeNode> parentStorageTreeNodesChildren = rootDirectoryNodeDeque.peekLast().getChildren();
+                        for (int iNode = 0; iNode < parentStorageTreeNodesChildren.size(); iNode++) {
+                            if (targetStorageTreeNode.getId().equals(parentStorageTreeNodesChildren.get(iNode).getId())) {
+                                parentStorageTreeNodesChildren.set(iNode, targetStorageTreeNode);
+                                targetStorageTreeNode.setIsAccessible(true);
                             }
                         }
 
-                        targetStorageTreeNode.setIsAccessible(targetStorageTreeNodeIsAccessible);
-                        rootDirectoryNodeStack.add(targetStorageTreeNode);
-                    } catch (Exception retrieveStorageTreeNodeException) {
-                        exceptionMessage = "Failed to add directory '%s' to the storage tree! Error: %s".formatted(targetStorageTreeNodeURL, retrieveStorageTreeNodeException.getMessage());
+                        /* In case of no match we just append it to the children (will be sorted later) */
+                        if (targetStorageTreeNode.getIsAccessible() == false) {
+                            parentStorageTreeNodesChildren.add(targetStorageTreeNode);
+                            targetStorageTreeNode.setIsAccessible(true);
+                        }
+
+                        if (storageHashMap.put(targetStorageTreeNode.getId(), targetStorageTreeNode) != null) {
+                            exceptionMessage = "Directory node '%s' is already present on the hashmap!".formatted(targetStorageTreeNodeURL);
+                            throw new StorageServiceException(exceptionMessage);
+                        }
+
+                        rootDirectoryNodeDeque.offer(targetStorageTreeNode);
+                    } catch (Exception exception) {
+                        exceptionMessage = "Failed to add directory '%s' to the storage tree! Error: %s".formatted(directoryPath.toString(), exception.getMessage());
                         //TODO: LOG(exceptionMessage);
-                        retrieveStorageTreeNodeException.printStackTrace();
+                        exception.printStackTrace();
                         return FileVisitResult.SKIP_SUBTREE;
                     }
 
@@ -230,22 +199,23 @@ public class StorageTree {
                 }
 
                 @Override
-                public FileVisitResult postVisitDirectory(Path directoryPath, IOException exc) {
+                public FileVisitResult postVisitDirectory(Path directoryPath, IOException preExistingException) {
                     String exceptionMessage = null;
 
-                    try {
-                        if (!rootDirectoryNodeStack.isEmpty()) {
-                            final Comparator<StorageTreeNode> storageTreeNodeComparator = Comparator.comparing((StorageTreeNode iNode) -> iNode.getChildren() != null ? 0 : 1).thenComparing(StorageTreeNode::getOnDiskName);
-                            Collections.sort(rootDirectoryNodeStack.get(rootDirectoryNodeStack.size() - 1).getChildren(), storageTreeNodeComparator);
-                        }
+                    if (preExistingException != null) {
+                        exceptionMessage = "Directory '%s' threw an I/O Exception: %s".formatted(directoryPath, preExistingException.getMessage());
+                        System.out.println(exceptionMessage);
+                        preExistingException.printStackTrace();
+                    }
 
-                        if (rootDirectoryNodeStack.size() - 1 > 0 && directoryPath.equals(rootDirectoryNodeStack.get(rootDirectoryNodeStack.size() - 1).getAbsolutePath())) {
-                            rootDirectoryNodeStack.remove(rootDirectoryNodeStack.size() - 1);
-                        }
-                    } catch (Exception retrieveStorageTreeNodeException) {
-                        exceptionMessage = "Failed to close directory '%s'! Error: %s".formatted(rootDirectoryPath.relativize(directoryPath).toString(), retrieveStorageTreeNodeException.getMessage());
+                    try {
+                        final Comparator<StorageTreeNode> storageTreeNodeComparator = Comparator.comparing((StorageTreeNode iNode) -> iNode.getChildren() != null ? 0 : 1).thenComparing(StorageTreeNode::getOnDiskName);
+                        Collections.sort(rootDirectoryNodeDeque.peekLast().getChildren(), storageTreeNodeComparator);
+                        rootDirectoryNodeDeque.removeLast();
+                    } catch (Exception exception) {
+                        exceptionMessage = "Failed to close directory '%s'! Error: %s".formatted(rootDirectoryPath.relativize(directoryPath).toString(), exception.getMessage());
                         //TODO: LOG(exceptionMessage);
-                        retrieveStorageTreeNodeException.printStackTrace();
+                        exception.printStackTrace();
                         return FileVisitResult.CONTINUE;
                     }
 
@@ -253,193 +223,89 @@ public class StorageTree {
                 }
 
                 @Override
-                public FileVisitResult visitFileFailed(Path filePath, IOException exc) {
-                    //TODO: LOG(exc);
+                public FileVisitResult visitFileFailed(Path filePath, IOException preExistingException) {
+                    String exceptionMessage = null;
+
+                    if (preExistingException != null) {
+                        exceptionMessage = "File '%s' threw an I/O Exception: %s".formatted(filePath, preExistingException.getMessage());
+                        System.out.println(exceptionMessage);
+                        preExistingException.printStackTrace();
+                    }
+
                     return FileVisitResult.CONTINUE;
                 }
             });
 
-            rootStorageTreeNode.setChildren(rootDirectoryNodeStack.get(0).getChildren());
-        } catch (Exception buildStorageTreeNodeException) {
-            errorMessage = "Failed to build the '%s' directory storage tree!".formatted(rootDirectoryName);
-            throw new StorageServiceException(errorMessage, buildStorageTreeNodeException);
+            if (rootDirectoryNodeDeque.size() > 0) {
+                throw new StorageServiceException("%d unhandled directories left in the deque!".formatted(rootDirectoryNodeDeque.size()));
+            }
+        } catch (Exception exception) {
+            throw new RuntimeException(exception.getMessage());
         }
-
-        this.storageTreeRoot = rootStorageTreeNode;
-        this.storageTreeDirectoryPath = rootDirectoryPath;
-        this.storageTreeHashMap = rootDirectoryThreeHashMap;
     }
 
-    /**
-     * <p>Create a new node that will be commited to the permanent database <p>
-     * @param targetStorageTreeNode node to be committed
-     * @param destinationStorageTreeNode node to be committed to
-     * @param persistOriginalFile move if false/copy if right - it's that simple
-     * @param onConflict what should be done in case of a conflict?
-     * <ul>
-     * <li><b>overwrite</b> - overwrites the conflicting file with the original (only applicable to files)</li>
-     * <li><b>merge</b> - merges the original directory with the conflicting one (only applicable to directories)</li>
-     * <li><b>rename</b> - appends <b>(N)</b> to the original name (<b>N</b> being the number of the copy)</li>
-     * <li><b>ignore</b> - pretty self-explanatory as far as these kind of things go...</li>
-     * </ul>
-     * @return a non-null value of <b>StorageTreeNode</b> that has been commited to the <b>database</b>, complete with child nodes (in case of a directory)
-     * @throws FileAlreadyExistsException in case of an unresolved (ignored) file/directory conflict
-     * @throws StorageServiceException if arguments passed to the method are not valid
-     * @throws Exception to raise exceptions thrown by method calls from within
-     */
-    public StorageTreeNode commitStorageTreeNode(StorageTreeNode targetStorageTreeNode, StorageTreeNode destinationStorageTreeNode, Boolean persistOriginalFile, String onConflict) throws Exception {
-        String errorMessage = null;
+    public StorageTreeNode recoverStorageTreeNode(String targetNodeName, StorageTreeNode parentStorageTreeNode) throws Exception {
+        final Path targetPath = parentStorageTreeNode.getRelativePath().resolve(targetNodeName);
 
-        Path finalStorageTreeNodePath = null;
-        StorageTreeNode conflictingStorageTreeNode = null;
-
-        final Path currentPath = targetStorageTreeNode.getAbsolutePath();
-        final String currentName = targetStorageTreeNode.getOnDiskName();
-        //final String currentURL = targetStorageTreeNode.getOnDiskURL();
-
-        final Path destinationPath = destinationStorageTreeNode.getAbsolutePath();
-        final String destinationName = destinationStorageTreeNode.getOnDiskName();
-        //final String destinationURL = destinationStorageTreeNode.getOnDiskURL();
-
-        final Path targetPath = destinationPath.resolve(currentName);
-
-        if (!Files.exists(targetPath)) {
-            finalStorageTreeNodePath = persistOriginalFile ? Files.copy(currentPath, targetPath) : Files.move(currentPath, targetPath);
+        final StorageTreeNode newStorageTreeNode;
+        if (StoragePath.isValidDirectory(targetPath)) {
+            newStorageTreeNode = new StorageTreeNode(parentStorageTreeNode, new ArrayList<StorageTreeNode>(), targetPath, this.storageTreeProperties.getRecoveredDirectoryDescription());
+        } else if (StoragePath.isValidFile(targetPath)) {
+            newStorageTreeNode = new StorageTreeNode(parentStorageTreeNode, null, targetPath, this.storageTreeProperties.getRecoveredFileDescription());
+        } else if (StoragePath.isValidNode(targetPath)) {
+            throw new StorageServiceException("Provided path is not accessible!");
         } else {
-            conflictingStorageTreeNode = retrieveStorageTreeNode(targetPath);
+            throw new StorageServiceException("Provided path leads to nothing!!!");
         }
 
-        if (conflictingStorageTreeNode != null) {
-            if (conflictingStorageTreeNode.getId().equals(targetStorageTreeNode.getId())) {
-                //TODO: rename!
-            }
+        return newStorageTreeNode;
+    }
 
-            switch (onConflict) {
-                case "overwrite":
-                    if (Files.isDirectory(currentPath)) {
-                        errorMessage = "Target '%s' is a directory, making the 'overwrite' flag not applicable!".formatted(currentName);
-                        throw new StorageServiceException(errorMessage);
-                    }
-
-                    if (Files.isDirectory(targetPath)) {
-                        errorMessage = "Conflicting '%s' is a directory, making the 'overwrite' flag not applicable!".formatted(currentName);
-                        throw new StorageServiceException(errorMessage);
-                    }
-
-                    finalStorageTreeNodePath = persistOriginalFile ? Files.copy(currentPath, targetPath, StandardCopyOption.REPLACE_EXISTING) : Files.move(currentPath, targetPath, StandardCopyOption.REPLACE_EXISTING);
-
-                    break;
-                case "merge":
-                    if (!Files.isDirectory(currentPath)) {
-                        errorMessage = "Target '%s' is not a directory, making the 'merge' flag not applicable!".formatted(currentName);
-                        throw new StorageServiceException(errorMessage);
-                    }
-
-                    if (!Files.isDirectory(targetPath)) {
-                        errorMessage = "Conflicting '%s' is not a directory, making the 'merge' flag not applicable!".formatted(currentName);
-                        throw new StorageServiceException(errorMessage);
-                    }
-
-                    return conflictingStorageTreeNode;
-                case "rename":
-                    Pattern pattern = Pattern.compile("^(\\.)?(.+?)( \\(\\d+\\))?(\\.\\w+)?$");
-                    Matcher matcher = pattern.matcher(currentName);
-
-                    String baseDot = null;
-                    String baseName = null;
-                    String copyNumber = null;
-                    String fileExtension = null;
-                    Integer baseNameModifier = 1;
-                    String temporaryName = null;
-                    Path temporaryPath = null;
-
-                    if (matcher.matches()) {
-                        baseDot = matcher.group(1);
-                        baseName = matcher.group(2);
-                        copyNumber = matcher.group(3);
-                        fileExtension = matcher.group(4);
-
-                        if (baseDot != null && !baseDot.isEmpty()) {
-                            // Combine the dot from the dotfiles with the basename
-                            baseName = baseDot + baseName;
-                        }
-
-                        if (copyNumber != null && !copyNumber.isEmpty()) {
-                            // Remove parentheses from copyNumber and parse it to Integer
-                            baseNameModifier = Integer.parseInt(copyNumber.substring(2, copyNumber.length() - 1));
-                        }
-
-                        if (fileExtension != null && !fileExtension.isEmpty()) {
-                            // Remove the dot preceding the file extension
-                            fileExtension = fileExtension.substring(1);
-                        }
-                    } else {
-                        errorMessage = "Name '%s' does not match the regex pattern!".formatted(currentName);
-                        throw new StorageServiceException(errorMessage);
-                    }
-
-                    while (baseNameModifier <= Integer.MAX_VALUE) {
-                        if (fileExtension == null || fileExtension.isEmpty()) {
-                            temporaryName = "%s (%s)".formatted(baseName, baseNameModifier);
-                        } else {
-                            temporaryName = "%s (%s).%s".formatted(baseName, baseNameModifier, fileExtension);
-                        }
-
-                        temporaryPath = destinationPath.resolve(temporaryName);
-                        if (!Files.exists(temporaryPath)) {
-                            finalStorageTreeNodePath = persistOriginalFile ? Files.copy(currentPath, temporaryPath) : Files.move(currentPath, temporaryPath);
-                        } else {
-                            conflictingStorageTreeNode = retrieveStorageTreeNode(temporaryPath);
-                            baseNameModifier++;
-                            continue;
-                        }
-
-                        break;
-                    }
-
-                    if (finalStorageTreeNodePath == null) {
-                        errorMessage = "Do you seriously intend to tell me that '%s' and its other %d iterations already exist on disk? In '%s' directory? All there? Together?".formatted(currentName, Integer.MAX_VALUE, destinationName);
-                        throw new StorageServiceException(errorMessage);
-                    }
-
-                    break;
-                case "ignore":
-                default:
-                    errorMessage = "%s '%s' already exists in the '%s' directory!".formatted(Files.isDirectory(targetPath) ? "Directory" : "File", currentName, destinationName);
-                    throw new FileAlreadyExistsException(errorMessage);
-            }
+    public StorageTreeNode publishStorageTreeNode(StorageTreeNode targetStorageTreeNode) throws Exception {
+        /* we save to repository only here because the recovery of the node does not necessarily guarantee that we also want to keep it */
+        final StorageTreeNode savedStorageTreeNode = storageRepository.save(targetStorageTreeNode);
+        final StorageTreeNode parentStorageTreeNode = savedStorageTreeNode.getParent();
+        
+        final Comparator<StorageTreeNode> storageTreeNodeComparator = Comparator.comparing((StorageTreeNode iNode) -> iNode.getChildren() != null ? 0 : 1).thenComparing(StorageTreeNode::getOnDiskName);
+        final Integer iNode = Collections.binarySearch(parentStorageTreeNode.getChildren(), savedStorageTreeNode, storageTreeNodeComparator);
+        
+        if (iNode > 0) { //TODO: this whole thing will have to be debugged thoroully!
+            throw new StorageServiceException("The node is already there??? This is supposed to be impossible!!!");
         }
 
-        if (finalStorageTreeNodePath != null) {
-            Integer commitedStorageTreeNodeInsertionIndex = 0;
+        /* iNode being negative means that we have the index the item should be at but is not, so we reverse it and to get the appropriate insertion index */
+        parentStorageTreeNode.getChildren().add(iNode > 0 ? -(iNode + 1) : iNode, savedStorageTreeNode);
+        this.storageHashMap.put(savedStorageTreeNode.getId(), savedStorageTreeNode);
+        targetStorageTreeNode.setIsAccessible(true);
 
-            final String finalStorageTreeNodeName = finalStorageTreeNodePath.getFileName().toString();
-            final String finalStorageTreeNodeURL = this.storageTreeDirectoryPath.relativize(finalStorageTreeNodePath).toString();
-            final List<StorageTreeNode> finalStorageTreeNodeChildren = Files.isDirectory(finalStorageTreeNodePath) ? new ArrayList<StorageTreeNode>() : null;
-            final StorageTreeNode finalStorageTreeNode = new StorageTreeNode(finalStorageTreeNodeName, targetStorageTreeNode.getDescription(), destinationStorageTreeNode, finalStorageTreeNodeChildren, finalStorageTreeNodeURL, finalStorageTreeNodePath);
-            final StorageTreeNode commitedStorageTreeNode = this.storageRepository.save(finalStorageTreeNode);
+        return savedStorageTreeNode;
+    }
 
-            final Comparator<StorageTreeNode> storageNodeComparator = Comparator.comparing((StorageTreeNode node) -> node.getChildren() == null).thenComparing(StorageTreeNode::getOnDiskURL);
-            while (commitedStorageTreeNodeInsertionIndex < destinationStorageTreeNode.getChildren().size() && storageNodeComparator.compare(commitedStorageTreeNode, destinationStorageTreeNode.getChildren().get(commitedStorageTreeNodeInsertionIndex)) > 0) {
-                commitedStorageTreeNodeInsertionIndex++;
-            }
-
-            destinationStorageTreeNode.getChildren().add(commitedStorageTreeNodeInsertionIndex, commitedStorageTreeNode);
-            this.storageTreeHashMap.put(commitedStorageTreeNode.getId(), commitedStorageTreeNode.getOnDiskURL(), commitedStorageTreeNode.getAbsolutePath(), commitedStorageTreeNode);
-            //TODO: appropriate checks!!!
-            return commitedStorageTreeNode;
-        } else {
-            errorMessage = "Failed to commit the %s '%s' to storage!".formatted(Files.isDirectory(targetPath) ? "directory" : "file", currentName);
-            throw new StorageServiceException(errorMessage);
+    public StorageTreeNode updateStorageTreeNode(StorageTreeNode targetStorageTreeNode) throws Exception {
+        if (targetStorageTreeNode.getId() == null) {
+            throw new StorageServiceException("The node is not committed!");
         }
+
+        return this.storageRepository.save(targetStorageTreeNode);
+    }
+
+    public void unPublishStorageTreeNode(StorageTreeNode targetStorageTreeNode) throws Exception {
+        final StorageTreeNode parentStorageTreeNode = targetStorageTreeNode.getParent();
+        
+        storageRepository.delete(targetStorageTreeNode);
+        this.storageHashMap.remove(targetStorageTreeNode.getId());
+        parentStorageTreeNode.getChildren().remove(targetStorageTreeNode);
+
+        /* this is just a formality, GC will take care of this node by itself */
+        targetStorageTreeNode.setIsAccessible(false); 
     }
 
     /**
      * @return root <b>StorageTreeNode</b> of the current tree instance
      * @throws Exception to raise exceptions thrown by method calls from within
      */
-    public StorageTreeNode retrieveStorageTreeRoot() {
-        return this.storageTreeRoot;
+    public StorageTreeNode retrievestorageRootNode() {
+        return this.storageRootNode;
     }
 
     /**
@@ -449,35 +315,54 @@ public class StorageTree {
      * @throws Exception to raise exceptions thrown by method calls from within
      */
     public StorageTreeNode retrieveStorageTreeNode(UUID targetID) throws Exception {
-        return this.storageTreeHashMap.get(targetID);
+        return this.storageHashMap.get(targetID);
     }
 
     /**
-     * <p>Will query the storage tree node hash map</p>
-     * @param targetURL URL to query (returns the root node if the paramater is null)
-     * @return a nullable (if nothing was found) value of <b>StorageTreeNode</b>
-     * @throws Exception to raise exceptions thrown by method calls from within
+     * @param targetName target name of the file/directory that is to be transfered (if null, will be extracted from the path of the file/directory)
+     * @param currentPath current path of the file/directory that is to be transfered
+     * @param destinationPath destination of the file/directory to be transfered
+     * @param removeOriginal should the file/directory be moved or copied
+     * @param replaceExisting should the incoming file/directory replace the existing
+     * @return path to the transfered file/directory
+     * @throws Exception if the move/copy method fails for any reason other than the {@code FileAlreadyExistsException}
+     * @throws FileAlreadyExistsException if file/directory under the same name already exists in the destination directory
      */
-    public StorageTreeNode retrieveStorageTreeNode(String targetURL) throws Exception {
-        return this.storageTreeHashMap.get(targetURL);
-    }
+    public Path transferNode(String targetName, Path currentPath, Path destinationPath, Boolean removeOriginal, Boolean replaceExisting) throws Exception {
+        final String targetNodeName = targetName == null ? currentPath.getFileName().toString() : targetName;
+        final Boolean removeOriginalNode = removeOriginal == null ? false : removeOriginal;
+        final Path targetPath = destinationPath.resolve(targetNodeName);
 
-    /**
-     * <p>Will query the storage tree node hash map</p>
-     * @param targetPath path to query (returns the root node if the paramater is null)
-     * @return a nullable (if nothing was found) value of <b>StorageTreeNode</b>
-     * @throws Exception to raise exceptions thrown by method calls from within
-     */
-    public StorageTreeNode retrieveStorageTreeNode(Path targetPath) throws Exception {
-        return this.storageTreeHashMap.get(targetPath);
-    }
+        if (currentPath == null || (!StoragePath.isValidDirectory(currentPath) && !StoragePath.isValidFile(currentPath))) {
+            final String errorMessage = "Supplied path for the node to be transfered is invalid".formatted();
+            throw new StorageServiceException(errorMessage);
+        }
 
-    public Boolean removeStorageTreeNode(StorageTreeNode targetStorageTreeNode) throws Exception {
+        if (StoragePath.isValidNode(targetPath) && (replaceExisting == null || replaceExisting == false)) {
+            final String errorMessage = "%s under the name '%s' already exists in the '%s' directory!".formatted(Files.isDirectory(targetPath) ? "Directory" : "File", targetNodeName, destinationPath.getFileName().toString());
+            throw new FileAlreadyExistsException(errorMessage);
+        }
 
-   //     if (targetStorageTreeNode.getOnDiskURL().isEmpty()) {
-    //        throw new StorageServiceException("fuck off!");
-  //      }
+        if (destinationPath == null || !StoragePath.isValidDirectory(destinationPath)) {
+            final String errorMessage = "Supplied path for the destination directory is invalid".formatted();
+            throw new StorageServiceException(errorMessage);
+        }
 
-        return true;
+        Path transferedNodePath = null;
+        if (removeOriginalNode && !Files.isDirectory(currentPath)) {
+            if (replaceExisting != null && replaceExisting == true) {
+                transferedNodePath = Files.move(currentPath, targetPath, StandardCopyOption.REPLACE_EXISTING);
+            } else {
+                transferedNodePath = Files.move(currentPath, targetPath);
+            }
+        } else {
+            transferedNodePath = Files.copy(currentPath, targetPath);
+        }
+
+        if (transferedNodePath == null) {
+            throw new StorageServiceException(targetNodeName);
+        }
+
+        return this.storageRootDirectoryPath.relativize(transferedNodePath);
     }
 }

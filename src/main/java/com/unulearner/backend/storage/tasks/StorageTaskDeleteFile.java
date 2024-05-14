@@ -1,12 +1,9 @@
 package com.unulearner.backend.storage.tasks;
 
-import java.util.ArrayList;
-import java.util.Arrays;
-
 import com.unulearner.backend.storage.StorageTree;
 import com.unulearner.backend.storage.StorageTreeNode;
-import com.unulearner.backend.storage.exceptions.StorageServiceException;
 import com.unulearner.backend.storage.statics.StateCode;
+import com.unulearner.backend.storage.statics.TaskOptions;
 import com.unulearner.backend.storage.repository.StorageTasksMap;
 
 public class StorageTaskDeleteFile extends StorageTask {
@@ -15,53 +12,61 @@ public class StorageTaskDeleteFile extends StorageTask {
         super(storageTree, targetNode, destinationNode, storageTasksMap);
         
         this.setCurrentTarget(targetNode);
-        this.setOnExceptionOptions(new ArrayList<>(Arrays.asList(
-            new Option("skip", "Skip", true, true)
-        )));
 
         this.setTaskHeading("Remove %s from disk".formatted(this.getRootTarget().getOnDiskURL()));
-        this.setTaskCurrentState("File removal task was initiated...".formatted(), StateCode.RUNNING);
+        this.setTaskCurrentState("File removal task was initiated...".formatted(), null, StateCode.RUNNING);
     }
-    
+
     @Override
-    public synchronized void executeTask(String newOnExceptionAction, Boolean newOnExceptionActionIsPersistent, Boolean cancelTaskExecution) {
+    public synchronized void executeTask(Boolean skipOnException, Boolean skipOnExceptionIsPersistent, String onExceptionAction, Boolean onExceptionActionIsPersistent, Boolean cancelTaskExecution) {
         final StorageTreeNode currentTarget = this.getCurrentTarget();
 
         if (currentTarget == null) {
-            this.setTaskCurrentState("File removal task finished successfully!".formatted(), StateCode.COMPLETED);
+            this.setTaskCurrentState("File removal task finished successfully!".formatted(), null, StateCode.COMPLETED);
             return;
         }
 
         if (cancelTaskExecution != null && cancelTaskExecution == true) {
-            this.setTaskCurrentState("File removal task was cancelled...".formatted(), StateCode.CANCELLED);
+            this.setTaskCurrentState("File removal task was cancelled...".formatted(), null, StateCode.CANCELLED);
             return;
         }
 
-        if (newOnExceptionAction != null) {
-            newOnExceptionActionIsPersistent = newOnExceptionActionIsPersistent != null ? newOnExceptionActionIsPersistent : false;
-            this.setOnExceptionAction(currentTarget, newOnExceptionAction, newOnExceptionActionIsPersistent);
+        if (onExceptionAction != null) {
+            onExceptionActionIsPersistent = onExceptionActionIsPersistent != null ? onExceptionActionIsPersistent : false;
+            this.setOnExceptionAction(currentTarget, onExceptionAction, onExceptionActionIsPersistent);
         }
 
-        /* If new rule was set it will be returned here, otherwise we'll get "default" */
-        final String onExceptionAction = this.getOnExceptionAction(currentTarget);
+        if (skipOnException != null) {
+            skipOnExceptionIsPersistent = skipOnExceptionIsPersistent != null ? skipOnExceptionIsPersistent : false;
+            this.setSkipOnException(currentTarget, skipOnException, skipOnExceptionIsPersistent);
+
+            if (this.getSkipOnException(currentTarget) == true && this.getAttemptCounter() > 0) {
+                this.setTaskCurrentState("File '%s' removal was was skipped...".formatted(currentTarget.getOnDiskURL()), null, StateCode.RUNNING);
+                this.advanceTask();
+                return;
+            }
+        }
 
         try {
-            if (onExceptionAction.equals("skip") && this.getAttemptCounter() > 0) {
-                this.setTaskCurrentState("File '%s' removal was skipped...".formatted(currentTarget.getOnDiskURL()), StateCode.RUNNING);
+            this.incrementAttemptCounter();
+            this.storageTreeExecute().removeStorageTreeNode(currentTarget);
+            this.setTaskCurrentState("File '%s' was removed successfully!".formatted(currentTarget.getOnDiskURL()), null, StateCode.RUNNING);
+            this.advanceTask();
+            return;
+        } catch (Exception exception) {
+            if (this.getSkipOnException(currentTarget) == true && this.getAttemptCounter() > 0) {
+                this.setTaskCurrentState("File '%s' removal was was skipped automatically...".formatted(currentTarget.getOnDiskURL()), null, StateCode.RUNNING);
                 this.advanceTask();
                 return;
             }
 
-            this.incrementAttemptCounter();
-            this.storageTreeExecute().removeStorageTreeNode(currentTarget);
-            this.setTaskCurrentState("File '%s' was removed successfully!".formatted(currentTarget.getOnDiskURL()), StateCode.RUNNING);
-            this.advanceTask();
-            return;
-        } catch (StorageServiceException exception) {
-            this.setTaskCurrentState("File '%s' could not be removed - %s".formatted(currentTarget.getOnDiskURL(), exception.getMessage()), StateCode.EXCEPTION);
-            return;
-        } catch (Exception exception) {
-            this.setTaskCurrentState("File '%s' could not be removed - %s".formatted(currentTarget.getOnDiskURL(), exception.getMessage()), this.getAttemptCounter() > 3 ? StateCode.ERROR : StateCode.EXCEPTION);
+            if (this.getAttemptCounter() > 3) {
+                this.setTaskCurrentState("File '%s' could not be removed - %s".formatted(currentTarget.getOnDiskURL(), exception.getMessage()), null, StateCode.ERROR);
+                return; /* Absolute failure!!! */
+            }
+
+            final TaskOptions onExceptionOptions = new TaskOptions(false, false, null);
+            this.setTaskCurrentState("File '%s' could not be removed - %s".formatted(currentTarget.getOnDiskURL(), exception.getMessage()), onExceptionOptions, StateCode.EXCEPTION);
             return;
         }
     }
