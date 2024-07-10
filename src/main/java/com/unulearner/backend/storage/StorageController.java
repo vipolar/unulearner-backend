@@ -54,7 +54,7 @@ public class StorageController {
         @RequestParam(name = "description") String description) {
 
         try {
-            final StorageServiceResponse response = storageService.createFileStorageTreeNode(content, description, destinationDirectoryID);
+            final StorageServiceResponse response = storageService.createFileStorageNode(content, description, destinationDirectoryID);
             return new ResponseEntity<StorageServiceResponse>(response, HttpStatus.OK);
         } catch (Exception exception) {
             if (debugPrintStackTrace) {
@@ -79,7 +79,7 @@ public class StorageController {
         @RequestParam(name = "description", required = false) String updatedDescription) {
 
         try {
-            final StorageServiceResponse response = storageService.updateFileStorageTreeNode(targetFileID, updatedName, updatedDescription);
+            final StorageServiceResponse response = storageService.updateFileStorageNode(targetFileID, updatedName, updatedDescription);
             return new ResponseEntity<StorageServiceResponse>(response, HttpStatus.OK);
         } catch (Exception exception) {
             if (debugPrintStackTrace) {
@@ -102,7 +102,7 @@ public class StorageController {
         @PathVariable UUID destinationDirectoryID) {
 
         try {
-            final StorageServiceResponse response = storageService.transferFileStorageTreeNode(targetFileID, destinationDirectoryID, true);
+            final StorageServiceResponse response = storageService.transferFileStorageNode(targetFileID, destinationDirectoryID, true);
             return new ResponseEntity<StorageServiceResponse>(response, HttpStatus.OK);
         } catch (Exception exception) {
             if (debugPrintStackTrace) {
@@ -125,7 +125,7 @@ public class StorageController {
         @PathVariable UUID destinationDirectoryID) {
 
         try {
-            final StorageServiceResponse response = storageService.transferFileStorageTreeNode(targetFileID, destinationDirectoryID, false);
+            final StorageServiceResponse response = storageService.transferFileStorageNode(targetFileID, destinationDirectoryID, false);
             return new ResponseEntity<StorageServiceResponse>(response, HttpStatus.OK);
         } catch (Exception exception) {
             if (debugPrintStackTrace) {
@@ -146,7 +146,7 @@ public class StorageController {
         @PathVariable UUID targetFileID) {
 
         try {
-            final StorageServiceResponse response = storageService.deleteFileStorageTreeNode(targetFileID);
+            final StorageServiceResponse response = storageService.deleteFileStorageNode(targetFileID);
             return new ResponseEntity<StorageServiceResponse>(response, HttpStatus.OK);
         } catch (Exception exception) {
             if (debugPrintStackTrace) {
@@ -168,7 +168,7 @@ public class StorageController {
         @PathVariable UUID targetFileID) {
 
         try {
-            final Resource returnResource = storageService.downloadFileStorageTreeNode(targetFileID);
+            final Resource returnResource = storageService.downloadFileStorageNode(targetFileID);
             return ResponseEntity.ok().header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + returnResource.getFilename() + "\"").body(returnResource);
         } catch (Exception exception) {
             if (debugPrintStackTrace) {
@@ -199,7 +199,7 @@ public class StorageController {
         @RequestParam(name = "description") String description) {
 
         try {
-            final StorageServiceResponse response = storageService.createDirectoryStorageTreeNode(directory, description, destinationDirectoryID);
+            final StorageServiceResponse response = storageService.createDirectoryStorageNode(directory, description, destinationDirectoryID);
             return new ResponseEntity<StorageServiceResponse>(response, HttpStatus.OK);
         } catch (Exception exception) {
             if (debugPrintStackTrace) {
@@ -224,7 +224,7 @@ public class StorageController {
         @RequestParam(name = "description", required = false) String updatedDescription) {
 
         try {
-            final StorageServiceResponse response = storageService.updateDirectoryStorageTreeNode(targetDirectoryID, updatedName, updatedDescription);
+            final StorageServiceResponse response = storageService.updateDirectoryStorageNode(targetDirectoryID, updatedName, updatedDescription);
             return new ResponseEntity<StorageServiceResponse>(response, HttpStatus.OK);
         } catch (Exception exception) {
             if (debugPrintStackTrace) {
@@ -247,7 +247,7 @@ public class StorageController {
         @PathVariable UUID destinationDirectoryID) {
 
         try {
-            final StorageServiceResponse response = storageService.transferDirectoryStorageTreeNode(targetDirectoryID, destinationDirectoryID, true);
+            final StorageServiceResponse response = storageService.transferDirectoryStorageNode(targetDirectoryID, destinationDirectoryID, true);
             return new ResponseEntity<StorageServiceResponse>(response, HttpStatus.OK);
         } catch (Exception exception) {
             if (debugPrintStackTrace) {
@@ -270,7 +270,7 @@ public class StorageController {
         @PathVariable UUID destinationDirectoryID) {
 
         try {
-            final StorageServiceResponse response = storageService.transferDirectoryStorageTreeNode(targetDirectoryID, destinationDirectoryID, false);
+            final StorageServiceResponse response = storageService.transferDirectoryStorageNode(targetDirectoryID, destinationDirectoryID, false);
             return new ResponseEntity<StorageServiceResponse>(response, HttpStatus.OK);
         } catch (Exception exception) {
             if (debugPrintStackTrace) {
@@ -291,7 +291,7 @@ public class StorageController {
         @PathVariable UUID targetDirectoryID) {
 
         try {
-            final StorageServiceResponse response = storageService.deleteDirectoryStorageTreeNode(targetDirectoryID);
+            final StorageServiceResponse response = storageService.deleteDirectoryStorageNode(targetDirectoryID);
             return new ResponseEntity<StorageServiceResponse>(response, HttpStatus.OK);
         } catch (Exception exception) {
             if (debugPrintStackTrace) {
@@ -312,7 +312,7 @@ public class StorageController {
         @PathVariable UUID targetDirectoryID) {
 
         try {
-            final StorageNode response = storageService.downloadDirectoryStorageTreeNode(targetDirectoryID);
+            final StorageNode response = storageService.downloadDirectoryStorageNode(targetDirectoryID);
             return new ResponseEntity<StorageNode>(response, HttpStatus.OK);
         } catch (Exception exception) {
             if (debugPrintStackTrace) {
@@ -391,7 +391,7 @@ public class StorageController {
     @GetMapping("/root/download")
     public ResponseEntity<?> rootDownload() {
         try {
-            final StorageNode returnValue = storageService.downloadStorageTreeRootNode();
+            final StorageNode returnValue = storageService.downloadRootStorageNode();
             return new ResponseEntity<>(returnValue, HttpStatus.OK);
         } catch (Exception exception) {
             if (debugPrintStackTrace) {
