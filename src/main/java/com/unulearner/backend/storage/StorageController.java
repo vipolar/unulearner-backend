@@ -22,12 +22,12 @@ import com.unulearner.backend.storage.responses.StorageServiceResponse;
 
 @Controller
 @RequestMapping(path = "/storage")
-public class StorageServiceController {
-    private final StorageService storageService;
+public class StorageController {
+    private final Storage storageService;
     private final StorageProperties storageProperties;
     private final Boolean debugPrintStackTrace;
 
-    public StorageServiceController(StorageService storageService, StorageProperties storageProperties) {
+    public StorageController(Storage storageService, StorageProperties storageProperties) {
         this.storageService = storageService;
         this.storageProperties = storageProperties;
 

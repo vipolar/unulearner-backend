@@ -25,11 +25,11 @@ import org.springframework.beans.factory.config.ConfigurableBeanFactory;
 
 @Service
 @Scope(ConfigurableBeanFactory.SCOPE_SINGLETON)
-public class StorageService {
+public class Storage {
     final private StorageTree storageTree;
     final private StorageTasksMap storageTasksMap;
 
-    private StorageService(StorageTree storageTree, StorageTasksMap storageTasksMap) {
+    private Storage(StorageTree storageTree, StorageTasksMap storageTasksMap) {
         this.storageTree = storageTree;
         this.storageTasksMap = storageTasksMap;
     }
