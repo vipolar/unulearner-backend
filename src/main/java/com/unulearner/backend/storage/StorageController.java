@@ -15,7 +15,7 @@ import org.springframework.web.bind.annotation.ResponseBody;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 
-import com.unulearner.backend.storage.entities.StorageTreeNode;
+import com.unulearner.backend.storage.entities.StorageNode;
 import com.unulearner.backend.storage.properties.StorageProperties;
 import com.unulearner.backend.storage.responses.StorageServiceError;
 import com.unulearner.backend.storage.responses.StorageServiceResponse;
@@ -312,8 +312,8 @@ public class StorageController {
         @PathVariable UUID targetDirectoryID) {
 
         try {
-            final StorageTreeNode response = storageService.downloadDirectoryStorageTreeNode(targetDirectoryID);
-            return new ResponseEntity<StorageTreeNode>(response, HttpStatus.OK);
+            final StorageNode response = storageService.downloadDirectoryStorageTreeNode(targetDirectoryID);
+            return new ResponseEntity<StorageNode>(response, HttpStatus.OK);
         } catch (Exception exception) {
             if (debugPrintStackTrace) {
                 exception.printStackTrace();
@@ -391,7 +391,7 @@ public class StorageController {
     @GetMapping("/root/download")
     public ResponseEntity<?> rootDownload() {
         try {
-            final StorageTreeNode returnValue = storageService.downloadStorageTreeRootNode();
+            final StorageNode returnValue = storageService.downloadStorageTreeRootNode();
             return new ResponseEntity<>(returnValue, HttpStatus.OK);
         } catch (Exception exception) {
             if (debugPrintStackTrace) {

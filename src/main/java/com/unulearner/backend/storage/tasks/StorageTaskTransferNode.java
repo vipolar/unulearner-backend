@@ -6,8 +6,8 @@ import java.util.Optional;
 import java.util.List;
 
 import com.unulearner.backend.storage.data.StorageTree;
+import com.unulearner.backend.storage.entities.StorageNode;
 import com.unulearner.backend.storage.statics.StorageFileName;
-import com.unulearner.backend.storage.entities.StorageTreeNode;
 import com.unulearner.backend.storage.repository.StorageTasksMap;
 import com.unulearner.backend.storage.services.ExceptionHandler.OnExceptionOption;
 
@@ -17,11 +17,11 @@ import com.unulearner.backend.storage.exceptions.FileNameGenerationException;
 import com.unulearner.backend.storage.exceptions.FileNameValidationException;
 
 public class StorageTaskTransferNode extends StorageTaskBaseBatch {
-    private final StorageTreeNode rootDestinationStorageTreeNode;
-    private final StorageTreeNode rootTargetStorageTreeNode;
+    private final StorageNode rootDestinationStorageTreeNode;
+    private final StorageNode rootTargetStorageTreeNode;
     private final Boolean persistOriginalStorageTreeNode;
 
-    public StorageTaskTransferNode(StorageTree storageTree, StorageTreeNode targetStorageTreeNode, StorageTreeNode destinationStorageTreeNode, Boolean persistOriginal, StorageTasksMap storageTasksMap) {
+    public StorageTaskTransferNode(StorageTree storageTree, StorageNode targetStorageTreeNode, StorageNode destinationStorageTreeNode, Boolean persistOriginal, StorageTasksMap storageTasksMap) {
         super(storageTree, storageTasksMap);
 
         this.persistOriginalStorageTreeNode = persistOriginal != null ? persistOriginal : false;
@@ -250,7 +250,7 @@ public class StorageTaskTransferNode extends StorageTaskBaseBatch {
                 return;
             } catch (FileAlreadyExistsException exception) {
                 try { /* Here we attempt to find the conflicting node. And if we can't find it, we try to recover it */
-                    final Optional<StorageTreeNode> possibleConflict =  storageTaskCurrentAction.getDestinationStorageTreeNode().getChildren().stream().filter(entry -> entry.getNodePath().getFileName().toString().equals(storageTaskCurrentAction.getNewStorageTreeNode().getOnDiskName())).findFirst();
+                    final Optional<StorageNode> possibleConflict =  storageTaskCurrentAction.getDestinationStorageTreeNode().getChildren().stream().filter(entry -> entry.getNodePath().getFileName().toString().equals(storageTaskCurrentAction.getNewStorageTreeNode().getOnDiskName())).findFirst();
                     if (possibleConflict.isPresent()) {
                         storageTaskCurrentAction.setConflictStorageTreeNode(possibleConflict.get());
                     } else {
@@ -336,55 +336,55 @@ public class StorageTaskTransferNode extends StorageTaskBaseBatch {
     }
 
     protected class StorageTaskTransferNodeCurrentAction extends StorageTaskCurrentAction {
-        private StorageTreeNode newStorageTreeNode;
-        private StorageTreeNode targetStorageTreeNode;
-        private StorageTreeNode conflictStorageTreeNode;
-        private StorageTreeNode destinationStorageTreeNode;
+        private StorageNode newStorageTreeNode;
+        private StorageNode targetStorageTreeNode;
+        private StorageNode conflictStorageTreeNode;
+        private StorageNode destinationStorageTreeNode;
 
-        protected StorageTaskTransferNodeCurrentAction(StorageTaskTransferNodeCurrentAction parentStorageTaskAction, StorageTreeNode targetStorageTreeNode, StorageTreeNode destinationStorageTreeNode) {
+        protected StorageTaskTransferNodeCurrentAction(StorageTaskTransferNodeCurrentAction parentStorageTaskAction, StorageNode targetStorageTreeNode, StorageNode destinationStorageTreeNode) {
             super(parentStorageTaskAction);
 
             this.targetStorageTreeNode = targetStorageTreeNode;
             this.destinationStorageTreeNode = destinationStorageTreeNode;
-            this.newStorageTreeNode = new StorageTreeNode(null, targetStorageTreeNode.isDirectory() ? new ArrayList<>() : null, null, targetStorageTreeNode.getDescription());
+            this.newStorageTreeNode = new StorageNode(null, targetStorageTreeNode.isDirectory() ? new ArrayList<>() : null, null, targetStorageTreeNode.getDescription());
             this.newStorageTreeNode.setOnDiskName(targetStorageTreeNode.getOnDiskName());
 
             if (this.targetStorageTreeNode.isDirectory()) {
-                for (StorageTreeNode childNode : this.targetStorageTreeNode.getChildren()) {
+                for (StorageNode childNode : this.targetStorageTreeNode.getChildren()) {
                     this.getChildStorageTaskActions().add(new StorageTaskTransferNodeCurrentAction(this, childNode, null));
                 }
             }
         }
 
-        public StorageTreeNode getNewStorageTreeNode() {
+        public StorageNode getNewStorageTreeNode() {
             return this.newStorageTreeNode;
         }
 
-        protected void setNewStorageTreeNode(StorageTreeNode newStorageTreeNode) {
+        protected void setNewStorageTreeNode(StorageNode newStorageTreeNode) {
             this.newStorageTreeNode = newStorageTreeNode;
         }
 
-        public StorageTreeNode getTargetStorageTreeNode() {
+        public StorageNode getTargetStorageTreeNode() {
             return this.targetStorageTreeNode;
         }
         
-        protected void setTargetStorageTreeNode(StorageTreeNode targetStorageTreeNode) {
+        protected void setTargetStorageTreeNode(StorageNode targetStorageTreeNode) {
             this.targetStorageTreeNode = targetStorageTreeNode;
         }
     
-        public StorageTreeNode getConflictStorageTreeNode() {
+        public StorageNode getConflictStorageTreeNode() {
             return this.conflictStorageTreeNode;
         }
 
-        protected void setConflictStorageTreeNode(StorageTreeNode conflictStorageTreeNode) {
+        protected void setConflictStorageTreeNode(StorageNode conflictStorageTreeNode) {
             this.conflictStorageTreeNode = conflictStorageTreeNode;
         }
 
-        public StorageTreeNode getDestinationStorageTreeNode() {
+        public StorageNode getDestinationStorageTreeNode() {
             return this.destinationStorageTreeNode;
         }
 
-        protected void setDestinationStorageTreeNode(StorageTreeNode destinationStorageTreeNode) {
+        protected void setDestinationStorageTreeNode(StorageNode destinationStorageTreeNode) {
             this.destinationStorageTreeNode = destinationStorageTreeNode;
         }
     }

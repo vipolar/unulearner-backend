@@ -1,11 +1,11 @@
 package com.unulearner.backend.storage.services;
 
+import com.unulearner.backend.storage.entities.StorageNode;
+
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-
-import com.unulearner.backend.storage.entities.StorageTreeNode;
 
 public class ExceptionHandler {
     private final Map<String, OnExceptionActon> OEAMap;
@@ -79,7 +79,7 @@ public class ExceptionHandler {
         }
     }
 
-    public void setOnExceptionAction(StorageTreeNode exceptionNode, String exceptionType, String onExceptionAction, Boolean onExceptionActionIsPersistent) {
+    public void setOnExceptionAction(StorageNode exceptionNode, String exceptionType, String onExceptionAction, Boolean onExceptionActionIsPersistent) {
         if (exceptionNode == null || exceptionType == null || onExceptionAction == null || onExceptionActionIsPersistent == null) {
             return;
         }
@@ -96,7 +96,7 @@ public class ExceptionHandler {
         }
     }
 
-    public String getOnExceptionAction(String type, StorageTreeNode exceptionNode) {
+    public String getOnExceptionAction(String type, StorageNode exceptionNode) {
         final OnExceptionActon onExceptionActon;
         if (type == null || exceptionNode == null || (onExceptionActon = this.OEAMap.get(type)) == null) {
             return "";

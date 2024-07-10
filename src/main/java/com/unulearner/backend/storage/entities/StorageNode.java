@@ -32,11 +32,11 @@ import com.unulearner.backend.storage.exceptions.StorageServiceException;
 
 @Entity
 @Table(name = "storage_node")
-public class StorageTreeNode {
+public class StorageNode {
     /**
      * Default constructor. Never meant to be called manually!!!
      */
-    public StorageTreeNode() {}
+    public StorageNode() {}
 
     /**
      * This property is a constant, therefore it is the perfect property for tracking the nodes.
@@ -62,13 +62,13 @@ public class StorageTreeNode {
     @ManyToOne
     @JsonBackReference
     @JoinColumn(name = "parent", columnDefinition = "UUID", unique = false, nullable = true)
-    private StorageTreeNode parent;
+    private StorageNode parent;
 
-    public StorageTreeNode getParent() {
+    public StorageNode getParent() {
         return this.parent;
     }
 
-    public void setParent(StorageTreeNode parent) {
+    public void setParent(StorageNode parent) {
         this.parent = parent;
     }
 
@@ -150,13 +150,13 @@ public class StorageTreeNode {
     @Transient
     @JsonManagedReference
     @OneToMany(mappedBy = "parent")
-    private List<StorageTreeNode> children;
+    private List<StorageNode> children;
 
-    public List<StorageTreeNode> getChildren() {
+    public List<StorageNode> getChildren() {
         return this.children;
     }
 
-    public void setChildren(List<StorageTreeNode> children) {
+    public void setChildren(List<StorageNode> children) {
         this.children = children;
     }
 
@@ -250,7 +250,7 @@ public class StorageTreeNode {
      * @param nodePath Properties derived from it are public, but the path itself is for internal use only! On-disk path of the file/directory associated with the node.
      * @param description This property serves no purpose in file system management. This property is purely for the human eyes or the search bots (although...)
      */
-    public StorageTreeNode(StorageTreeNode parent, List<StorageTreeNode> children, NodePath nodePath, String description) {
+    public StorageNode(StorageNode parent, List<StorageNode> children, NodePath nodePath, String description) {
         this.setParent(parent);
         this.setChildren(children);
         this.setNodePath(nodePath);

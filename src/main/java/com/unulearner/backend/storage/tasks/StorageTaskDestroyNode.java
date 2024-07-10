@@ -4,16 +4,16 @@ import java.util.ArrayList;
 import java.util.List;
 
 import com.unulearner.backend.storage.data.StorageTree;
-import com.unulearner.backend.storage.entities.StorageTreeNode;
+import com.unulearner.backend.storage.entities.StorageNode;
 import com.unulearner.backend.storage.repository.StorageTasksMap;
 import com.unulearner.backend.storage.services.ExceptionHandler.OnExceptionOption;
 
 import java.io.IOException;
 
 public class StorageTaskDestroyNode extends StorageTaskBaseBatch {
-    private final StorageTreeNode rootTargetStorageTreeNode;
+    private final StorageNode rootTargetStorageTreeNode;
 
-    public StorageTaskDestroyNode(StorageTree storageTree, StorageTreeNode targetStorageTreeNode, StorageTasksMap storageTasksMap) {
+    public StorageTaskDestroyNode(StorageTree storageTree, StorageNode targetStorageTreeNode, StorageTasksMap storageTasksMap) {
         super(storageTree, storageTasksMap);
 
         this.rootTargetStorageTreeNode = targetStorageTreeNode;
@@ -148,25 +148,25 @@ public class StorageTaskDestroyNode extends StorageTaskBaseBatch {
     }
 
     protected class StorageTaskDestroyNodeCurrentAction extends StorageTaskCurrentAction {
-        private StorageTreeNode targetStorageTreeNode;
+        private StorageNode targetStorageTreeNode;
 
-        protected StorageTaskDestroyNodeCurrentAction(StorageTaskDestroyNodeCurrentAction parentStorageTaskAction, StorageTreeNode targetStorageTreeNode) {
+        protected StorageTaskDestroyNodeCurrentAction(StorageTaskDestroyNodeCurrentAction parentStorageTaskAction, StorageNode targetStorageTreeNode) {
             super(parentStorageTaskAction);
 
             this.targetStorageTreeNode = targetStorageTreeNode;
 
             if (this.targetStorageTreeNode.isDirectory()) {
-                for (StorageTreeNode childNode : targetStorageTreeNode.getChildren()) {
+                for (StorageNode childNode : targetStorageTreeNode.getChildren()) {
                     this.getChildStorageTaskActions().add(new StorageTaskDestroyNodeCurrentAction(this, childNode));
                 }
             }
         }
 
-        public StorageTreeNode getTargetStorageTreeNode() {
+        public StorageNode getTargetStorageTreeNode() {
             return this.targetStorageTreeNode;
         }
         
-        protected void setTargetStorageTreeNode(StorageTreeNode targetStorageTreeNode) {
+        protected void setTargetStorageTreeNode(StorageNode targetStorageTreeNode) {
             this.targetStorageTreeNode = targetStorageTreeNode;
         }
     }

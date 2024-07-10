@@ -5,8 +5,8 @@ import java.util.Optional;
 import java.util.List;
 
 import com.unulearner.backend.storage.data.StorageTree;
+import com.unulearner.backend.storage.entities.StorageNode;
 import com.unulearner.backend.storage.statics.StorageFileName;
-import com.unulearner.backend.storage.entities.StorageTreeNode;
 import com.unulearner.backend.storage.repository.StorageTasksMap;
 import com.unulearner.backend.storage.services.ExceptionHandler.OnExceptionOption;
 
@@ -15,9 +15,9 @@ import java.nio.file.FileAlreadyExistsException;
 import com.unulearner.backend.storage.exceptions.FileNameValidationException;
 
 public class StorageTaskUpdateNode extends StorageTaskBaseBatch {
-    private final StorageTreeNode rootTargetStorageTreeNode;
+    private final StorageNode rootTargetStorageTreeNode;
 
-    public StorageTaskUpdateNode(StorageTree storageTree, String targetName, StorageTreeNode targetStorageTreeNode, StorageTasksMap storageTasksMap) {
+    public StorageTaskUpdateNode(StorageTree storageTree, String targetName, StorageNode targetStorageTreeNode, StorageTasksMap storageTasksMap) {
         super(storageTree, storageTasksMap);
 
         this.rootTargetStorageTreeNode = targetStorageTreeNode;
@@ -168,7 +168,7 @@ public class StorageTaskUpdateNode extends StorageTaskBaseBatch {
                 return;
             } catch (FileAlreadyExistsException exception) {
                 try { /* Here we attempt to find the conflicting node. And if we can't find it, we try to recover it */
-                    final Optional<StorageTreeNode> possibleConflict =  storageTaskCurrentAction.getTargetStorageTreeNode().getParent().getChildren().stream().filter(entry -> entry.getNodePath().getFileName().toString().equals(storageTaskCurrentAction.getTargetStorageTreeNode().getOnDiskName())).findFirst();
+                    final Optional<StorageNode> possibleConflict =  storageTaskCurrentAction.getTargetStorageTreeNode().getParent().getChildren().stream().filter(entry -> entry.getNodePath().getFileName().toString().equals(storageTaskCurrentAction.getTargetStorageTreeNode().getOnDiskName())).findFirst();
                     if (possibleConflict.isPresent()) {
                         storageTaskCurrentAction.setConflictStorageTreeNode(possibleConflict.get());
                     } else {
@@ -234,47 +234,47 @@ public class StorageTaskUpdateNode extends StorageTaskBaseBatch {
     }
  
     protected class StorageTaskUpdateNodeCurrentAction extends StorageTaskCurrentAction {
-        private StorageTreeNode newStorageTreeNode;
-        private StorageTreeNode targetStorageTreeNode;
-        private StorageTreeNode conflictStorageTreeNode;
+        private StorageNode newStorageTreeNode;
+        private StorageNode targetStorageTreeNode;
+        private StorageNode conflictStorageTreeNode;
 
-        protected StorageTaskUpdateNodeCurrentAction(StorageTaskUpdateNodeCurrentAction parentStorageTaskAction, String targetName, StorageTreeNode targetStorageTreeNode) {
+        protected StorageTaskUpdateNodeCurrentAction(StorageTaskUpdateNodeCurrentAction parentStorageTaskAction, String targetName, StorageNode targetStorageTreeNode) {
             super(parentStorageTaskAction);
             
             this.targetStorageTreeNode = targetStorageTreeNode;
 
-            this.newStorageTreeNode = new StorageTreeNode(targetStorageTreeNode.getParent(), targetStorageTreeNode.getChildren(), null, targetStorageTreeNode.getDescription());
+            this.newStorageTreeNode = new StorageNode(targetStorageTreeNode.getParent(), targetStorageTreeNode.getChildren(), null, targetStorageTreeNode.getDescription());
             this.newStorageTreeNode.setOnDiskName(targetName);
             //TODO: setBusyWith() should happen here, after checking up the ladder!
 
             if (this.targetStorageTreeNode.isDirectory()) {
-                for (StorageTreeNode childNode : targetStorageTreeNode.getChildren()) {
+                for (StorageNode childNode : targetStorageTreeNode.getChildren()) {
                     this.getChildStorageTaskActions().add(new StorageTaskUpdateNodeCurrentAction(this, null, childNode));
                 }
             }
         }
 
-        public StorageTreeNode getNewStorageTreeNode() {
+        public StorageNode getNewStorageTreeNode() {
             return this.newStorageTreeNode;
         }
 
-        protected void setNewStorageTreeNode(StorageTreeNode newStorageTreeNode) {
+        protected void setNewStorageTreeNode(StorageNode newStorageTreeNode) {
             this.newStorageTreeNode = newStorageTreeNode;
         }
 
-        public StorageTreeNode getTargetStorageTreeNode() {
+        public StorageNode getTargetStorageTreeNode() {
             return this.targetStorageTreeNode;
         }
 
-        protected void setTargetStorageTreeNode(StorageTreeNode targetStorageTreeNode) {
+        protected void setTargetStorageTreeNode(StorageNode targetStorageTreeNode) {
             this.targetStorageTreeNode = targetStorageTreeNode;
         }
 
-        public StorageTreeNode getConflictStorageTreeNode() {
+        public StorageNode getConflictStorageTreeNode() {
             return this.conflictStorageTreeNode;
         }
 
-        protected void setConflictStorageTreeNode(StorageTreeNode conflictStorageTreeNode) {
+        protected void setConflictStorageTreeNode(StorageNode conflictStorageTreeNode) {
             this.conflictStorageTreeNode = conflictStorageTreeNode;
         }
     }
