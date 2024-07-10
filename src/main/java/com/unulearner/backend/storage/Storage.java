@@ -204,7 +204,7 @@ public class Storage {
      * @return
      * @throws Exception
      */
-    public StorageNode downloadRootStorageNode() throws Exception {
+    public StorageNode downloadRootDirectoryStorageNode() throws Exception {
         return this.storageTree.retrieveRootStorageNode();
     }
 

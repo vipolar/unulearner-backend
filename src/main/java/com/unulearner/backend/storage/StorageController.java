@@ -391,7 +391,7 @@ public class StorageController {
     @GetMapping("/root/download")
     public ResponseEntity<?> rootDownload() {
         try {
-            final StorageNode returnValue = storageService.downloadRootStorageNode();
+            final StorageNode returnValue = storageService.downloadRootDirectoryStorageNode();
             return new ResponseEntity<>(returnValue, HttpStatus.OK);
         } catch (Exception exception) {
             if (debugPrintStackTrace) {
