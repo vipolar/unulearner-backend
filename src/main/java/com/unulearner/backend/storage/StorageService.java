@@ -8,7 +8,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.core.io.UrlResource;
 import org.springframework.context.annotation.Scope;
 import org.springframework.web.multipart.MultipartFile;
-import org.springframework.beans.factory.config.ConfigurableBeanFactory;
 
 import com.unulearner.backend.storage.data.StorageTree;
 import com.unulearner.backend.storage.tasks.StorageTaskBase;
@@ -21,6 +20,8 @@ import com.unulearner.backend.storage.tasks.StorageTaskTransferNode;
 import com.unulearner.backend.storage.repository.StorageTasksMap;
 import com.unulearner.backend.storage.responses.StorageServiceResponse;
 import com.unulearner.backend.storage.exceptions.StorageServiceException;
+
+import org.springframework.beans.factory.config.ConfigurableBeanFactory;
 
 @Service
 @Scope(ConfigurableBeanFactory.SCOPE_SINGLETON)
