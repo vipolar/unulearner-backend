@@ -8,14 +8,14 @@ import org.springframework.stereotype.Service;
 
 import com.unulearner.backend.storage.exceptions.StorageServiceException;
 import com.unulearner.backend.storage.properties.StorageProperties;
-import com.unulearner.backend.storage.tasks.StorageTask;
+import com.unulearner.backend.storage.tasks.StorageTaskBase;
 
 @Service
 public class StorageTasksMap {
     private final Map<UUID, ScheduledFuture<?>> taskRemovalHashMap;
     private final ScheduledExecutorService taskRemovalScheduler;
+    private final Map<UUID, StorageTaskBase> taskHashMap;
     private final StorageProperties storageProperties;
-    private final Map<UUID, StorageTask> taskHashMap;
     private final Integer taskTimeOutInSeconds;
 
     public StorageTasksMap(StorageProperties storageProperties) {
@@ -27,7 +27,7 @@ public class StorageTasksMap {
         this.taskTimeOutInSeconds = this.storageProperties.getTaskTimeOut();
     }
 
-    public UUID addStorageTask(StorageTask task) {
+    public UUID addStorageTask(StorageTaskBase task) {
         UUID taskUUID = null;
 
         do {
@@ -38,7 +38,7 @@ public class StorageTasksMap {
         return taskUUID;
     }
 
-    public StorageTask getStorageTask(UUID taskUUID) throws Exception {
+    public StorageTaskBase getStorageTask(UUID taskUUID) throws Exception {
         String errorMessage = null;
         ScheduledFuture<?> scheduledFuture = this.taskRemovalHashMap.get(taskUUID);
 

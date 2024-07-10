@@ -1,4 +1,5 @@
 #HELP.md
+bin/
 target/
 .repository/
 !.mvn/wrapper/maven-wrapper.jar
