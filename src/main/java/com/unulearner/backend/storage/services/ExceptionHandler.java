@@ -27,11 +27,11 @@ public class ExceptionHandler {
             this.isPersistable = isPersistable;
         }
 
-        protected String getValue() {
+        public String getValue() {
             return this.value;
         }
 
-        protected String getDisplayText() {
+        public String getDisplayText() {
             return this.displayText;
         }
 

@@ -24,7 +24,7 @@ public class StorageTaskCreateNode extends StorageTaskBase {
 
         final StorageCreateNodeTaskAction storageTaskAction = new StorageCreateNodeTaskAction(newFile, newFileDescription, destinationStorageNode);
 
-        storageTaskAction.setActionHeader("Upload '%s' to '%s' directory".formatted(newFile.getOriginalFilename(), destinationStorageNode.getOnDiskURL()));
+        storageTaskAction.setActionHeader("Upload '%s' to '%s' directory".formatted(newFile.getOriginalFilename(), destinationStorageNode.getOnDiskFormattedURL()));
         storageTaskAction.setMessage("File upload task has been successfully initialized".formatted());
 
         this.setStorageTaskAction(storageTaskAction);
@@ -37,7 +37,7 @@ public class StorageTaskCreateNode extends StorageTaskBase {
         
         final StorageCreateNodeTaskAction storageTaskAction = new StorageCreateNodeTaskAction(newDirectoryName, newDirectoryDescription, destinationStorageNode);
 
-        storageTaskAction.setActionHeader("Create '%s' directory in '%s' directory".formatted(newDirectoryName, destinationStorageNode.getOnDiskURL()));
+        storageTaskAction.setActionHeader("Create '%s' directory in '%s' directory".formatted(newDirectoryName, destinationStorageNode.getOnDiskFormattedURL()));
         storageTaskAction.setMessage("Directory creation task has been successfully initialized".formatted());
     
         this.setStorageTaskAction(storageTaskAction);
@@ -50,13 +50,13 @@ public class StorageTaskCreateNode extends StorageTaskBase {
         final StorageCreateNodeTaskAction storageTaskAction = (StorageCreateNodeTaskAction) this.getStorageTaskAction();
 
         if (storageTaskAction.getNewStorageNode().getId() != null) {
-            storageTaskAction.setMessage("%s '%s' directory task finished successfully!".formatted(storageTaskAction.getNewStorageNode().isDirectory() ? "Directory creation in" : "File upload to", storageTaskAction.getNewStorageNode().getParent().getOnDiskURL()));
+            storageTaskAction.setMessage("%s '%s' directory task finished successfully!".formatted(storageTaskAction.getNewStorageNode().isDirectory() ? "Directory creation in" : "File upload to", storageTaskAction.getNewStorageNode().getParent().getOnDiskFormattedURL()));
             this.setCurrentState(TaskState.COMPLETED);
             return;
         }
 
         if (onExceptionAction != null && onExceptionAction.equals("cancel")) {
-            storageTaskAction.setMessage("%s '%s' directory task was cancelled...".formatted(storageTaskAction.getNewStorageNode().isDirectory() ? "Directory creation in" : "File upload to", storageTaskAction.getNewStorageNode().getParent().getOnDiskURL()));
+            storageTaskAction.setMessage("%s '%s' directory task was cancelled...".formatted(storageTaskAction.getNewStorageNode().isDirectory() ? "Directory creation in" : "File upload to", storageTaskAction.getNewStorageNode().getParent().getOnDiskFormattedURL()));
             this.setCurrentState(TaskState.CANCELLED);
             return;
         }
@@ -76,7 +76,7 @@ public class StorageTaskCreateNode extends StorageTaskBase {
                     switch (exceptionType) {
                         case "FileAlreadyExistsException": /* TODO: add option to publish the conflicting node if it isn't published */
                             if (storageTaskAction.getConflictStorageNode() == null) {
-                                throw new RuntimeException("%s '%s' could not be %s to directory '%s' due to a supposed conflicting node, existence of which can neither be confirmed nor denied...".formatted(storageTaskAction.getNewStorageNode().isDirectory() ? "Directory" : "File", storageTaskAction.getNewStorageNode().getOnDiskName(), storageTaskAction.getNewStorageNode().isDirectory() ? "created in" : "uploaded to", storageTaskAction.getNewStorageNode().getOnDiskURL()));
+                                throw new RuntimeException("%s '%s' could not be %s to directory '%s' due to a supposed conflicting node, existence of which can neither be confirmed nor denied...".formatted(storageTaskAction.getNewStorageNode().isDirectory() ? "Directory" : "File", storageTaskAction.getNewStorageNode().getOnDiskName(), storageTaskAction.getNewStorageNode().isDirectory() ? "created in" : "uploaded to", storageTaskAction.getNewStorageNode().getOnDiskFormattedURL()));
                             }
 
                             switch (exceptionAction) {
@@ -90,7 +90,7 @@ public class StorageTaskCreateNode extends StorageTaskBase {
                                     storageTaskAction.setConflictStorageNode(null);
                                     break;
                                 case "skip":
-                                    storageTaskAction.setMessage("%s '%s' %s to directory '%s' was skipped...".formatted(storageTaskAction.getNewStorageNode().isDirectory() ? "Directory" : "File", storageTaskAction.getNewStorageNode().getOnDiskName(), storageTaskAction.getNewStorageNode().isDirectory() ? "creation in" : "upload to", storageTaskAction.getNewStorageNode().getOnDiskURL()));
+                                    storageTaskAction.setMessage("%s '%s' %s to directory '%s' was skipped...".formatted(storageTaskAction.getNewStorageNode().isDirectory() ? "Directory" : "File", storageTaskAction.getNewStorageNode().getOnDiskName(), storageTaskAction.getNewStorageNode().isDirectory() ? "creation in" : "upload to", storageTaskAction.getNewStorageNode().getOnDiskFormattedURL()));
                                     this.setCurrentState(TaskState.EXECUTING);
                                     return;
                                 default:
@@ -100,7 +100,7 @@ public class StorageTaskCreateNode extends StorageTaskBase {
                                         add(new OnExceptionOption("skip", "Skip %s".formatted(storageTaskAction.getNewStorageNode().isDirectory() ? "directory" : "file"), true));
                                     }};
 
-                                    storageTaskAction.setMessage("%s '%s' could not be %s directory '%s' due to a conflicting node already in place.".formatted(storageTaskAction.getNewStorageNode().isDirectory() ? "Directory" : "File", storageTaskAction.getNewStorageNode().getOnDiskName(), storageTaskAction.getNewStorageNode().isDirectory() ? "created in" : "uploaded to", storageTaskAction.getNewStorageNode().getParent().getOnDiskURL()));
+                                    storageTaskAction.setMessage("%s '%s' could not be %s directory '%s' due to a conflicting node already in place.".formatted(storageTaskAction.getNewStorageNode().isDirectory() ? "Directory" : "File", storageTaskAction.getNewStorageNode().getOnDiskName(), storageTaskAction.getNewStorageNode().isDirectory() ? "created in" : "uploaded to", storageTaskAction.getNewStorageNode().getParent().getOnDiskFormattedURL()));
 
                                     
                                     this.getTaskExceptionHandler().setExceptionOptions(onConflictOptions);
@@ -115,7 +115,7 @@ public class StorageTaskCreateNode extends StorageTaskBase {
                                     storageTaskAction.setConflictStorageNode(null);
                                     break;
                                 case "skip":
-                                    storageTaskAction.setMessage("%s '%s' %s to directory '%s' was skipped...".formatted(storageTaskAction.getNewStorageNode().isDirectory() ? "Directory" : "File", storageTaskAction.getNewStorageNode().getOnDiskName(), storageTaskAction.getNewStorageNode().isDirectory() ? "creation in" : "upload to", storageTaskAction.getNewStorageNode().getOnDiskURL()));
+                                    storageTaskAction.setMessage("%s '%s' %s to directory '%s' was skipped...".formatted(storageTaskAction.getNewStorageNode().isDirectory() ? "Directory" : "File", storageTaskAction.getNewStorageNode().getOnDiskName(), storageTaskAction.getNewStorageNode().isDirectory() ? "creation in" : "upload to", storageTaskAction.getNewStorageNode().getOnDiskFormattedURL()));
                                     this.setCurrentState(TaskState.EXECUTING);
                                     return;
                                 default:
@@ -124,7 +124,7 @@ public class StorageTaskCreateNode extends StorageTaskBase {
                                         add(new OnExceptionOption("skip", "Skip %s".formatted(storageTaskAction.getNewStorageNode().isDirectory() ? "directory" : "file"), true));
                                     }};
 
-                                    storageTaskAction.setMessage("%s '%s' could not be %s directory '%s' due to a provided file name being incompatible.".formatted(storageTaskAction.getNewStorageNode().isDirectory() ? "Directory" : "File", storageTaskAction.getNewStorageNode().getOnDiskName(), storageTaskAction.getNewStorageNode().isDirectory() ? "created in" : "uploaded to", storageTaskAction.getNewStorageNode().getParent().getOnDiskURL()));
+                                    storageTaskAction.setMessage("%s '%s' could not be %s directory '%s' due to a provided file name being incompatible.".formatted(storageTaskAction.getNewStorageNode().isDirectory() ? "Directory" : "File", storageTaskAction.getNewStorageNode().getOnDiskName(), storageTaskAction.getNewStorageNode().isDirectory() ? "created in" : "uploaded to", storageTaskAction.getNewStorageNode().getParent().getOnDiskFormattedURL()));
                                     this.getTaskExceptionHandler().setExceptionOptions(onConflictOptions);
                                     this.setCurrentState(TaskState.EXCEPTION);
                                     return;
@@ -137,7 +137,7 @@ public class StorageTaskCreateNode extends StorageTaskBase {
                                     storageTaskAction.setConflictStorageNode(null);
                                     break;
                                 case "skip":
-                                    storageTaskAction.setMessage("%s '%s' %s to directory '%s' was skipped...".formatted(storageTaskAction.getNewStorageNode().isDirectory() ? "Directory" : "File", storageTaskAction.getNewStorageNode().getOnDiskName(), storageTaskAction.getNewStorageNode().isDirectory() ? "creation in" : "upload to", storageTaskAction.getNewStorageNode().getOnDiskURL()));
+                                    storageTaskAction.setMessage("%s '%s' %s to directory '%s' was skipped...".formatted(storageTaskAction.getNewStorageNode().isDirectory() ? "Directory" : "File", storageTaskAction.getNewStorageNode().getOnDiskName(), storageTaskAction.getNewStorageNode().isDirectory() ? "creation in" : "upload to", storageTaskAction.getNewStorageNode().getOnDiskFormattedURL()));
                                     this.setCurrentState(TaskState.EXECUTING);
                                     return;
                                 default:
@@ -146,7 +146,7 @@ public class StorageTaskCreateNode extends StorageTaskBase {
                                         add(new OnExceptionOption("skip", "Skip %s".formatted(storageTaskAction.getNewStorageNode().isDirectory() ? "directory" : "file"), true));
                                     }};
 
-                                    storageTaskAction.setMessage("%s '%s' could not be %s directory '%s' due to a failed name generation attempt.".formatted(storageTaskAction.getNewStorageNode().isDirectory() ? "Directory" : "File", storageTaskAction.getNewStorageNode().getOnDiskName(), storageTaskAction.getNewStorageNode().isDirectory() ? "created in" : "uploaded to", storageTaskAction.getNewStorageNode().getParent().getOnDiskURL()));
+                                    storageTaskAction.setMessage("%s '%s' could not be %s directory '%s' due to a failed name generation attempt.".formatted(storageTaskAction.getNewStorageNode().isDirectory() ? "Directory" : "File", storageTaskAction.getNewStorageNode().getOnDiskName(), storageTaskAction.getNewStorageNode().isDirectory() ? "created in" : "uploaded to", storageTaskAction.getNewStorageNode().getParent().getOnDiskFormattedURL()));
                                     this.getTaskExceptionHandler().setExceptionOptions(onConflictOptions);
                                     this.setCurrentState(TaskState.EXCEPTION);
                                     return;
@@ -154,7 +154,7 @@ public class StorageTaskCreateNode extends StorageTaskBase {
                         case "IOException":
                             switch (exceptionAction) {
                                 case "skip":
-                                    storageTaskAction.setMessage("%s '%s' %s to directory '%s' was skipped...".formatted(storageTaskAction.getNewStorageNode().isDirectory() ? "Directory" : "File", storageTaskAction.getNewStorageNode().getOnDiskName(), storageTaskAction.getNewStorageNode().isDirectory() ? "creation in" : "upload to", storageTaskAction.getNewStorageNode().getOnDiskURL()));
+                                    storageTaskAction.setMessage("%s '%s' %s to directory '%s' was skipped...".formatted(storageTaskAction.getNewStorageNode().isDirectory() ? "Directory" : "File", storageTaskAction.getNewStorageNode().getOnDiskName(), storageTaskAction.getNewStorageNode().isDirectory() ? "creation in" : "upload to", storageTaskAction.getNewStorageNode().getOnDiskFormattedURL()));
                                     this.setCurrentState(TaskState.EXECUTING);
                                     return;
                                 default:
@@ -162,7 +162,7 @@ public class StorageTaskCreateNode extends StorageTaskBase {
                                         add(new OnExceptionOption("skip", "Skip %s".formatted(storageTaskAction.getNewStorageNode().isDirectory() ? "directory" : "file"), true));
                                     }};
         
-                                    storageTaskAction.setMessage("%s '%s' could not be %s directory '%s' due to a persistent I/O exception occurring.".formatted(storageTaskAction.getNewStorageNode().isDirectory() ? "Directory" : "File", storageTaskAction.getNewStorageNode().getOnDiskName(), storageTaskAction.getNewStorageNode().isDirectory() ? "created in" : "uploaded to", storageTaskAction.getNewStorageNode().getParent().getOnDiskURL()));
+                                    storageTaskAction.setMessage("%s '%s' could not be %s directory '%s' due to a persistent I/O exception occurring.".formatted(storageTaskAction.getNewStorageNode().isDirectory() ? "Directory" : "File", storageTaskAction.getNewStorageNode().getOnDiskName(), storageTaskAction.getNewStorageNode().isDirectory() ? "created in" : "uploaded to", storageTaskAction.getNewStorageNode().getParent().getOnDiskFormattedURL()));
                                     this.getTaskExceptionHandler().setExceptionOptions(onPhysicalOptions);
                                     this.setCurrentState(TaskState.EXCEPTION);
                                     return;
@@ -170,7 +170,7 @@ public class StorageTaskCreateNode extends StorageTaskBase {
                         default:
                             switch (exceptionAction) {
                                 case "skip":
-                                    storageTaskAction.setMessage("%s '%s' %s to directory '%s' was skipped...".formatted(storageTaskAction.getNewStorageNode().isDirectory() ? "Directory" : "File", storageTaskAction.getNewStorageNode().getOnDiskName(), storageTaskAction.getNewStorageNode().isDirectory() ? "creation in" : "upload to", storageTaskAction.getNewStorageNode().getOnDiskURL()));
+                                    storageTaskAction.setMessage("%s '%s' %s to directory '%s' was skipped...".formatted(storageTaskAction.getNewStorageNode().isDirectory() ? "Directory" : "File", storageTaskAction.getNewStorageNode().getOnDiskName(), storageTaskAction.getNewStorageNode().isDirectory() ? "creation in" : "upload to", storageTaskAction.getNewStorageNode().getOnDiskFormattedURL()));
                                     this.setCurrentState(TaskState.EXECUTING);
                                     return;
                                 default:
@@ -178,7 +178,7 @@ public class StorageTaskCreateNode extends StorageTaskBase {
                                         add(new OnExceptionOption("skip", "Skip %s".formatted(storageTaskAction.getNewStorageNode().isDirectory() ? "directory" : "file"), true));
                                     }};
         
-                                    storageTaskAction.setMessage("%s '%s' could not be %s directory '%s' due to an unexpected exception occurring.".formatted(storageTaskAction.getNewStorageNode().isDirectory() ? "Directory" : "File", storageTaskAction.getNewStorageNode().getOnDiskName(), storageTaskAction.getNewStorageNode().isDirectory() ? "created in" : "uploaded to", storageTaskAction.getNewStorageNode().getParent().getOnDiskURL()));
+                                    storageTaskAction.setMessage("%s '%s' could not be %s directory '%s' due to an unexpected exception occurring.".formatted(storageTaskAction.getNewStorageNode().isDirectory() ? "Directory" : "File", storageTaskAction.getNewStorageNode().getOnDiskName(), storageTaskAction.getNewStorageNode().isDirectory() ? "created in" : "uploaded to", storageTaskAction.getNewStorageNode().getParent().getOnDiskFormattedURL()));
                                     this.getTaskExceptionHandler().setExceptionOptions(onPhysicalOptions);
                                     this.setCurrentState(TaskState.EXCEPTION);
                                     return;
@@ -194,7 +194,7 @@ public class StorageTaskCreateNode extends StorageTaskBase {
                     this.storageTreeExecute().publishStorageNode(storageTaskAction.getNewStorageNode());
                 }
 
-                storageTaskAction.setMessage("%s '%s' has been %s directory '%s' successfully!".formatted(storageTaskAction.getNewStorageNode().isDirectory() ? "Directory" : "File", storageTaskAction.getNewStorageNode().getOnDiskURL(), storageTaskAction.getNewStorageNode().isDirectory() ? "created in" : "uploaded to", storageTaskAction.getNewStorageNode().getParent().getOnDiskURL()));
+                storageTaskAction.setMessage("%s '%s' has been %s directory '%s' successfully!".formatted(storageTaskAction.getNewStorageNode().isDirectory() ? "Directory" : "File", storageTaskAction.getNewStorageNode().getOnDiskFormattedURL(), storageTaskAction.getNewStorageNode().isDirectory() ? "created in" : "uploaded to", storageTaskAction.getNewStorageNode().getParent().getOnDiskFormattedURL()));
                 storageTaskAction.setExceptionMessage(null);
                 storageTaskAction.setExceptionType(null);
             } catch (FileAlreadyExistsException exception) {
@@ -242,7 +242,7 @@ public class StorageTaskCreateNode extends StorageTaskBase {
         protected StorageCreateNodeTaskAction(MultipartFile newFile, String newFileDescription, StorageNode destinationStorageNode) {
             super();
 
-            this.newStorageNode = new StorageNode(null, null, null, newFileDescription);
+            this.newStorageNode = new StorageNode(destinationStorageNode, null, null, newFileDescription);
             this.newStorageNode.setOnDiskName(newFile.getOriginalFilename());
             this.destinationStorageNode = destinationStorageNode;
             this.newMultipartFile = newFile;
@@ -251,7 +251,7 @@ public class StorageTaskCreateNode extends StorageTaskBase {
         protected StorageCreateNodeTaskAction(String newDirectoryName, String newDirectoryDescription, StorageNode destinationStorageNode) {
             super();
 
-            this.newStorageNode = new StorageNode(null, new ArrayList<>(), null, newDirectoryDescription);
+            this.newStorageNode = new StorageNode(destinationStorageNode, new ArrayList<>(), null, newDirectoryDescription);
             this.destinationStorageNode = destinationStorageNode;
             this.newStorageNode.setOnDiskName(newDirectoryName);
             this.newMultipartFile = null;

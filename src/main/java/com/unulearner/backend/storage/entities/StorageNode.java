@@ -27,6 +27,7 @@ import com.fasterxml.jackson.databind.annotation.JsonSerialize;
 
 import com.unulearner.backend.storage.extensions.NodePath;
 import com.unulearner.backend.storage.extensions.OnDiskURLSerializer;
+import com.unulearner.backend.storage.extensions.OnCommitDateSerializer;
 
 import com.unulearner.backend.storage.exceptions.StorageServiceException;
 
@@ -85,6 +86,10 @@ public class StorageNode {
         return this.onDiskURL;
     }
 
+    public String getOnDiskFormattedURL() {
+        return "/%s".formatted(this.onDiskURL);
+    }
+
     public void setOnDiskURL(String onDiskURL) {
         this.onDiskURL = onDiskURL.replace("\\", "/");
     }
@@ -123,6 +128,7 @@ public class StorageNode {
      * This property does not have a setter as it should never be set manually.
      */
     @CreationTimestamp
+    @JsonSerialize(using = OnCommitDateSerializer.class)
     @Column(name = "created", columnDefinition = "TIMESTAMP", nullable = false, updatable = false)
     private Date created;
 
@@ -135,6 +141,7 @@ public class StorageNode {
      * This property does not have a setter as it should never be set manually.
      */
     @UpdateTimestamp
+    @JsonSerialize(using = OnCommitDateSerializer.class)
     @Column(name = "updated", columnDefinition = "TIMESTAMP", nullable = false, updatable = true)
     private Date updated;
 

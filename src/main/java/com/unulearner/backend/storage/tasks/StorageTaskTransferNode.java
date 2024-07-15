@@ -30,7 +30,7 @@ public class StorageTaskTransferNode extends StorageTaskBaseBatch {
 
         final StorageTaskTransferNodeCurrentAction storageTaskAction = new StorageTaskTransferNodeCurrentAction(null, targetStorageNode, destinationStorageNode);
 
-        storageTaskAction.setActionHeader("%s '%s' %s to '%s'".formatted(this.persistOriginalStorageNode ? "Copy" : "Move", this.rootTargetStorageNode.isDirectory() ? "directory" : "file", this.rootTargetStorageNode.getOnDiskURL(), this.rootDestinationStorageNode.getOnDiskURL()));
+        storageTaskAction.setActionHeader("%s '%s' %s to '%s'".formatted(this.persistOriginalStorageNode ? "Copy" : "Move", this.rootTargetStorageNode.isDirectory() ? "directory" : "file", this.rootTargetStorageNode.getOnDiskFormattedURL(), this.rootDestinationStorageNode.getOnDiskFormattedURL()));
         storageTaskAction.setMessage("%s transfer task has been successfully initialized".formatted(this.rootTargetStorageNode.isDirectory() ? "Directory" : "File"));
 
         this.setStorageTaskAction(storageTaskAction);
@@ -43,13 +43,13 @@ public class StorageTaskTransferNode extends StorageTaskBaseBatch {
         final StorageTaskTransferNodeCurrentAction storageTaskCurrentAction = (StorageTaskTransferNodeCurrentAction) this.getStorageTaskAction();
 
         if (storageTaskCurrentAction.getParentStorageTaskAction() == null && storageTaskCurrentAction.getNewStorageNode().getId() != null) {
-            storageTaskCurrentAction.setMessage("%s '%s' %s to %s task finished successfully!".formatted(this.rootTargetStorageNode.isDirectory() ? "Directory" : "File", this.rootTargetStorageNode.getOnDiskURL(), this.persistOriginalStorageNode ? "copy" : "move", this.rootDestinationStorageNode.getOnDiskURL()));
+            storageTaskCurrentAction.setMessage("%s '%s' %s to %s task finished successfully!".formatted(this.rootTargetStorageNode.isDirectory() ? "Directory" : "File", this.rootTargetStorageNode.getOnDiskFormattedURL(), this.persistOriginalStorageNode ? "copy" : "move", this.rootDestinationStorageNode.getOnDiskFormattedURL()));
             this.setCurrentState(TaskState.COMPLETED);
             return;
         }
 
         if (onExceptionAction != null && onExceptionAction.equals("cancel")) {
-            storageTaskCurrentAction.setMessage("%s '%s' %s to %s task was cancelled...".formatted(this.rootTargetStorageNode.isDirectory() ? "Directory" : "File", this.rootTargetStorageNode.getOnDiskURL(), this.persistOriginalStorageNode ? "copy" : "move", this.rootDestinationStorageNode.getOnDiskURL()));
+            storageTaskCurrentAction.setMessage("%s '%s' %s to %s task was cancelled...".formatted(this.rootTargetStorageNode.isDirectory() ? "Directory" : "File", this.rootTargetStorageNode.getOnDiskFormattedURL(), this.persistOriginalStorageNode ? "copy" : "move", this.rootDestinationStorageNode.getOnDiskFormattedURL()));
             this.setCurrentState(TaskState.CANCELLED);
             return;
         }
@@ -71,7 +71,7 @@ public class StorageTaskTransferNode extends StorageTaskBaseBatch {
                     switch (exceptionType) {
                         case "FileAlreadyExistsException":  /* TODO: add option to publish the conflicting node if it isn't published */
                             if (storageTaskCurrentAction.getConflictStorageNode() == null) {
-                                throw new RuntimeException("%s '%s' could not be %s to directory '%s' due to a supposed conflicting node, existence of which can neither be confirmed nor denied...".formatted(storageTaskCurrentAction.getTargetStorageNode().isDirectory() ? "Directory" : "File", storageTaskCurrentAction.getTargetStorageNode().getOnDiskURL(), this.persistOriginalStorageNode ? "copied" : "moved", storageTaskCurrentAction.getDestinationStorageNode().getOnDiskURL()));
+                                throw new RuntimeException("%s '%s' could not be %s to directory '%s' due to a supposed conflicting node, existence of which can neither be confirmed nor denied...".formatted(storageTaskCurrentAction.getTargetStorageNode().isDirectory() ? "Directory" : "File", storageTaskCurrentAction.getTargetStorageNode().getOnDiskFormattedURL(), this.persistOriginalStorageNode ? "copied" : "moved", storageTaskCurrentAction.getDestinationStorageNode().getOnDiskFormattedURL()));
                             }
 
                             switch (exceptionAction) {
@@ -102,7 +102,7 @@ public class StorageTaskTransferNode extends StorageTaskBaseBatch {
                                     replaceExisting = true;
                                     break;
                                 case "skip":
-                                    storageTaskCurrentAction.setMessage("%s '%s' %s to directory '%s' was skipped...".formatted(storageTaskCurrentAction.getTargetStorageNode().isDirectory() ? "Directory" : "File", storageTaskCurrentAction.getTargetStorageNode().getOnDiskURL(), this.persistOriginalStorageNode ? "copy" : "move", storageTaskCurrentAction.getDestinationStorageNode().getOnDiskURL()));
+                                    storageTaskCurrentAction.setMessage("%s '%s' %s to directory '%s' was skipped...".formatted(storageTaskCurrentAction.getTargetStorageNode().isDirectory() ? "Directory" : "File", storageTaskCurrentAction.getTargetStorageNode().getOnDiskFormattedURL(), this.persistOriginalStorageNode ? "copy" : "move", storageTaskCurrentAction.getDestinationStorageNode().getOnDiskFormattedURL()));
                                     this.setCurrentState(TaskState.EXECUTING);
                                     this.skipCurrentNodesChildren();
                                     this.advanceStorageTask();
@@ -120,7 +120,7 @@ public class StorageTaskTransferNode extends StorageTaskBaseBatch {
                                         add(new OnExceptionOption("skip", "Skip %s".formatted(storageTaskCurrentAction.getTargetStorageNode().isDirectory() ? "directory" : "file"), true));
                                     }};
 
-                                    storageTaskCurrentAction.setMessage("%s '%s' could not be %s to directory '%s' due to a conflicting node already in place.".formatted(storageTaskCurrentAction.getTargetStorageNode().isDirectory() ? "Directory" : "File", storageTaskCurrentAction.getTargetStorageNode().getOnDiskURL(), this.persistOriginalStorageNode ? "copied" : "moved", storageTaskCurrentAction.getDestinationStorageNode().getOnDiskURL()));
+                                    storageTaskCurrentAction.setMessage("%s '%s' could not be %s to directory '%s' due to a conflicting node already in place.".formatted(storageTaskCurrentAction.getTargetStorageNode().isDirectory() ? "Directory" : "File", storageTaskCurrentAction.getTargetStorageNode().getOnDiskFormattedURL(), this.persistOriginalStorageNode ? "copied" : "moved", storageTaskCurrentAction.getDestinationStorageNode().getOnDiskFormattedURL()));
                                     this.getTaskExceptionHandler().setExceptionOptions(onConflictOptions);
                                     this.setCurrentState(TaskState.EXCEPTION);
                                     return;
@@ -133,7 +133,7 @@ public class StorageTaskTransferNode extends StorageTaskBaseBatch {
                                     storageTaskCurrentAction.setConflictStorageNode(null);
                                     break;
                                 case "skip":
-                                    storageTaskCurrentAction.setMessage("%s '%s' %s to directory '%s' was skipped...".formatted(storageTaskCurrentAction.getNewStorageNode().isDirectory() ? "Directory" : "File", storageTaskCurrentAction.getNewStorageNode().getOnDiskName(), storageTaskCurrentAction.getNewStorageNode().isDirectory() ? "creation in" : "upload to", storageTaskCurrentAction.getNewStorageNode().getOnDiskURL()));
+                                    storageTaskCurrentAction.setMessage("%s '%s' %s to directory '%s' was skipped...".formatted(storageTaskCurrentAction.getNewStorageNode().isDirectory() ? "Directory" : "File", storageTaskCurrentAction.getNewStorageNode().getOnDiskName(), storageTaskCurrentAction.getNewStorageNode().isDirectory() ? "creation in" : "upload to", storageTaskCurrentAction.getNewStorageNode().getOnDiskFormattedURL()));
                                     this.setCurrentState(TaskState.EXECUTING);
                                     this.advanceStorageTask();
                                     return;
@@ -143,7 +143,7 @@ public class StorageTaskTransferNode extends StorageTaskBaseBatch {
                                         add(new OnExceptionOption("skip", "Skip %s".formatted(storageTaskCurrentAction.getTargetStorageNode().isDirectory() ? "directory" : "file"), true));
                                     }};
 
-                                    storageTaskCurrentAction.setMessage("%s '%s' could not be %s to directory '%s' due to a provided file name being incompatible.".formatted(storageTaskCurrentAction.getTargetStorageNode().isDirectory() ? "Directory" : "File", storageTaskCurrentAction.getTargetStorageNode().getOnDiskURL(), this.persistOriginalStorageNode ? "copied" : "moved", storageTaskCurrentAction.getDestinationStorageNode().getOnDiskURL()));
+                                    storageTaskCurrentAction.setMessage("%s '%s' could not be %s to directory '%s' due to a provided file name being incompatible.".formatted(storageTaskCurrentAction.getTargetStorageNode().isDirectory() ? "Directory" : "File", storageTaskCurrentAction.getTargetStorageNode().getOnDiskFormattedURL(), this.persistOriginalStorageNode ? "copied" : "moved", storageTaskCurrentAction.getDestinationStorageNode().getOnDiskFormattedURL()));
                                     this.getTaskExceptionHandler().setExceptionOptions(onConflictOptions);
                                     this.setCurrentState(TaskState.EXCEPTION);
                                     return;
@@ -156,7 +156,7 @@ public class StorageTaskTransferNode extends StorageTaskBaseBatch {
                                     storageTaskCurrentAction.setConflictStorageNode(null);
                                     break;
                                 case "skip":
-                                    storageTaskCurrentAction.setMessage("%s '%s' %s to directory '%s' was skipped...".formatted(storageTaskCurrentAction.getNewStorageNode().isDirectory() ? "Directory" : "File", storageTaskCurrentAction.getNewStorageNode().getOnDiskName(), storageTaskCurrentAction.getNewStorageNode().isDirectory() ? "creation in" : "upload to", storageTaskCurrentAction.getNewStorageNode().getOnDiskURL()));
+                                    storageTaskCurrentAction.setMessage("%s '%s' %s to directory '%s' was skipped...".formatted(storageTaskCurrentAction.getNewStorageNode().isDirectory() ? "Directory" : "File", storageTaskCurrentAction.getNewStorageNode().getOnDiskName(), storageTaskCurrentAction.getNewStorageNode().isDirectory() ? "creation in" : "upload to", storageTaskCurrentAction.getNewStorageNode().getOnDiskFormattedURL()));
                                     this.setCurrentState(TaskState.EXECUTING);
                                     this.advanceStorageTask();
                                     return;
@@ -166,7 +166,7 @@ public class StorageTaskTransferNode extends StorageTaskBaseBatch {
                                         add(new OnExceptionOption("skip", "Skip %s".formatted(storageTaskCurrentAction.getTargetStorageNode().isDirectory() ? "directory" : "file"), true));
                                     }};
 
-                                    storageTaskCurrentAction.setMessage("%s '%s' could not be %s to directory '%s' due to a failed name generation attempt.".formatted(storageTaskCurrentAction.getTargetStorageNode().isDirectory() ? "Directory" : "File", storageTaskCurrentAction.getTargetStorageNode().getOnDiskURL(), this.persistOriginalStorageNode ? "copied" : "moved", storageTaskCurrentAction.getDestinationStorageNode().getOnDiskURL()));
+                                    storageTaskCurrentAction.setMessage("%s '%s' could not be %s to directory '%s' due to a failed name generation attempt.".formatted(storageTaskCurrentAction.getTargetStorageNode().isDirectory() ? "Directory" : "File", storageTaskCurrentAction.getTargetStorageNode().getOnDiskFormattedURL(), this.persistOriginalStorageNode ? "copied" : "moved", storageTaskCurrentAction.getDestinationStorageNode().getOnDiskFormattedURL()));
                                     this.getTaskExceptionHandler().setExceptionOptions(onConflictOptions);
                                     this.setCurrentState(TaskState.EXCEPTION);
                                     return;
@@ -174,7 +174,7 @@ public class StorageTaskTransferNode extends StorageTaskBaseBatch {
                         case "IOException":
                             switch (exceptionAction) {
                                 case "skip":
-                                    storageTaskCurrentAction.setMessage("%s '%s' %s to directory '%s' was skipped...".formatted(storageTaskCurrentAction.getTargetStorageNode().isDirectory() ? "Directory" : "File", storageTaskCurrentAction.getTargetStorageNode().getOnDiskURL(), this.persistOriginalStorageNode ? "copy" : "move", storageTaskCurrentAction.getDestinationStorageNode().getOnDiskURL()));
+                                    storageTaskCurrentAction.setMessage("%s '%s' %s to directory '%s' was skipped...".formatted(storageTaskCurrentAction.getTargetStorageNode().isDirectory() ? "Directory" : "File", storageTaskCurrentAction.getTargetStorageNode().getOnDiskFormattedURL(), this.persistOriginalStorageNode ? "copy" : "move", storageTaskCurrentAction.getDestinationStorageNode().getOnDiskFormattedURL()));
                                     this.setCurrentState(TaskState.EXECUTING);
                                     this.skipCurrentNodesChildren();
                                     this.advanceStorageTask();
@@ -184,7 +184,7 @@ public class StorageTaskTransferNode extends StorageTaskBaseBatch {
                                         add(new OnExceptionOption("skip", "Skip %s".formatted(storageTaskCurrentAction.getTargetStorageNode().isDirectory() ? "directory" : "file"), true));
                                     }};
         
-                                    storageTaskCurrentAction.setMessage("%s '%s' could not be %s to directory '%s' due to a persistent I/O exception occurring".formatted(storageTaskCurrentAction.getTargetStorageNode().isDirectory() ? "Directory" : "File", storageTaskCurrentAction.getTargetStorageNode().getOnDiskURL(), this.persistOriginalStorageNode ? "copied" : "moved", storageTaskCurrentAction.getDestinationStorageNode().getOnDiskURL()));
+                                    storageTaskCurrentAction.setMessage("%s '%s' could not be %s to directory '%s' due to a persistent I/O exception occurring".formatted(storageTaskCurrentAction.getTargetStorageNode().isDirectory() ? "Directory" : "File", storageTaskCurrentAction.getTargetStorageNode().getOnDiskFormattedURL(), this.persistOriginalStorageNode ? "copied" : "moved", storageTaskCurrentAction.getDestinationStorageNode().getOnDiskFormattedURL()));
                                     this.getTaskExceptionHandler().setExceptionOptions(onPhysicalOptions);
                                     this.setCurrentState(TaskState.EXCEPTION);
                                     return;
@@ -192,7 +192,7 @@ public class StorageTaskTransferNode extends StorageTaskBaseBatch {
                         default:
                             switch (exceptionAction) {
                                 case "skip":
-                                    storageTaskCurrentAction.setMessage("%s '%s' %s to directory '%s' was skipped...".formatted(storageTaskCurrentAction.getTargetStorageNode().isDirectory() ? "Directory" : "File", storageTaskCurrentAction.getTargetStorageNode().getOnDiskURL(), this.persistOriginalStorageNode ? "copy" : "move", storageTaskCurrentAction.getDestinationStorageNode().getOnDiskURL()));
+                                    storageTaskCurrentAction.setMessage("%s '%s' %s to directory '%s' was skipped...".formatted(storageTaskCurrentAction.getTargetStorageNode().isDirectory() ? "Directory" : "File", storageTaskCurrentAction.getTargetStorageNode().getOnDiskFormattedURL(), this.persistOriginalStorageNode ? "copy" : "move", storageTaskCurrentAction.getDestinationStorageNode().getOnDiskFormattedURL()));
                                     this.setCurrentState(TaskState.EXECUTING);
                                     this.skipCurrentNodesChildren();
                                     this.advanceStorageTask();
@@ -202,7 +202,7 @@ public class StorageTaskTransferNode extends StorageTaskBaseBatch {
                                         add(new OnExceptionOption("skip", "Skip %s".formatted(storageTaskCurrentAction.getTargetStorageNode().isDirectory() ? "directory" : "file"), true));
                                     }};
         
-                                    storageTaskCurrentAction.setMessage("%s '%s' could not be %s to directory '%s' due to an unexpected exception occurring".formatted(storageTaskCurrentAction.getTargetStorageNode().isDirectory() ? "Directory" : "File", storageTaskCurrentAction.getTargetStorageNode().getOnDiskURL(), this.persistOriginalStorageNode ? "copied" : "moved", storageTaskCurrentAction.getDestinationStorageNode().getOnDiskURL()));
+                                    storageTaskCurrentAction.setMessage("%s '%s' could not be %s to directory '%s' due to an unexpected exception occurring".formatted(storageTaskCurrentAction.getTargetStorageNode().isDirectory() ? "Directory" : "File", storageTaskCurrentAction.getTargetStorageNode().getOnDiskFormattedURL(), this.persistOriginalStorageNode ? "copied" : "moved", storageTaskCurrentAction.getDestinationStorageNode().getOnDiskFormattedURL()));
                                     this.getTaskExceptionHandler().setExceptionOptions(onGeneralOptions);
                                     this.setCurrentState(TaskState.EXCEPTION);
                                     return;
@@ -244,7 +244,7 @@ public class StorageTaskTransferNode extends StorageTaskBaseBatch {
                     }
                 }
                 
-                storageTaskCurrentAction.setMessage("%s '%s' has been %s to directory '%s' successfully!".formatted(storageTaskCurrentAction.getTargetStorageNode().isDirectory() ? "Directory" : "File", storageTaskCurrentAction.getTargetStorageNode().getOnDiskURL(), this.persistOriginalStorageNode ? "copied" : "moved", storageTaskCurrentAction.getDestinationStorageNode().getOnDiskURL()));
+                storageTaskCurrentAction.setMessage("%s '%s' has been %s to directory '%s' successfully!".formatted(storageTaskCurrentAction.getTargetStorageNode().isDirectory() ? "Directory" : "File", storageTaskCurrentAction.getTargetStorageNode().getOnDiskFormattedURL(), this.persistOriginalStorageNode ? "copied" : "moved", storageTaskCurrentAction.getDestinationStorageNode().getOnDiskFormattedURL()));
                 this.setCurrentState(TaskState.EXECUTING);
                 this.advanceStorageTask();
                 return;

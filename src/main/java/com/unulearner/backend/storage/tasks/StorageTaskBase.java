@@ -61,7 +61,7 @@ public class StorageTaskBase {
             this.storageTaskAction.setTimeLeft(this.taskStorageTasksMap.removeStorageTask(this.taskUUID));
         }
 
-        return new StorageServiceResponse(this.taskUUID, this.currentState.toString(), this.storageTaskAction);
+        return new StorageServiceResponse(this.taskUUID, this.currentState.toString(), this.storageTaskAction, this.taskExceptionHandler.getExceptionOptions());
     }
 
     protected void setStorageTaskAction(StorageTaskAction storageTaskAction) {
