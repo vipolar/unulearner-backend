@@ -3,6 +3,7 @@ package com.unulearner.backend.storage.tasks;
 import java.util.ArrayList;
 import java.util.UUID;
 import java.util.List;
+import java.util.Map;
 
 import com.unulearner.backend.storage.data.StorageTree;
 import com.unulearner.backend.storage.services.ExceptionHandler;
@@ -50,7 +51,7 @@ public class StorageTaskBase {
     }
 
     /* This is the outward facing method, meant to be fired by the service shell or the controller */
-    public synchronized void execute(String updatedName, String onExceptionAction, Boolean onExceptionActionIsPersistent) {
+    public synchronized void execute(Map<String, Object> taskParameters) {
         return;
     }
 

@@ -82,7 +82,7 @@ public class StorageTree {
                             targetStorageNode.setNodePath(directoryNodePath);
 
                             if (parentStorageNode != null && targetStorageNode.getParent() != null && !parentStorageNode.getId().equals(targetStorageNode.getParent().getId())) {
-                                throw new FileToParentRelationsException("Directory is supposedly a child of directory '%s' but the relationship is not mirrored on the persistent level".formatted(parentStorageNode.getOnDiskFormattedURL()));
+                                throw new FileToParentRelationsException("Directory is supposedly a child of directory '%s' but the relationship is not mirrored on the persistent level".formatted(parentStorageNode.getOnDiskURL()));
                             }
 
                             targetStorageNode.setChildren(storageRepository.findAllByParent(targetStorageNode));
@@ -142,7 +142,7 @@ public class StorageTree {
                             targetStorageNode.setNodePath(fileNodePath);
 
                             if (!parentStorageNode.getId().equals(targetStorageNode.getParent().getId())) {
-                                throw new FileToParentRelationsException("File is supposedly a child of directory '%s' but the relationship is not mirrored on the persistent level".formatted(parentStorageNode.getOnDiskFormattedURL()));
+                                throw new FileToParentRelationsException("File is supposedly a child of directory '%s' but the relationship is not mirrored on the persistent level".formatted(parentStorageNode.getOnDiskURL()));
                             }
                         } else {
                             targetStorageNode = storageRepository.save(new StorageNode(parentStorageNode, null, fileNodePath, storageTreeProperties.getRecoveredFileDescription()));
@@ -346,7 +346,7 @@ public class StorageTree {
 
         for (int iNode = 0; iNode < destinationStorageNode.getChildren().size(); iNode++) {
             if (destinationStorageNode.getChildren().get(iNode).getOnDiskName().equals(newStorageNode.getOnDiskName())) {
-                throw new FileAlreadyExistsException("Node '%s' already exists in '%s' directory.".formatted(newStorageNode.getOnDiskName(), destinationStorageNode.getOnDiskFormattedURL()));
+                throw new FileAlreadyExistsException("Node '%s' already exists in '%s' directory.".formatted(newStorageNode.getOnDiskName(), destinationStorageNode.getOnDiskURL()));
             }
         }
 
@@ -404,7 +404,7 @@ public class StorageTree {
 
         for (int iNode = 0; iNode < destinationStorageNode.getChildren().size(); iNode++) {
             if (destinationStorageNode.getChildren().get(iNode).getOnDiskName().equals(newStorageNode.getOnDiskName())) {
-                throw new FileAlreadyExistsException("Node '%s' already exists in '%s' directory.".formatted(newStorageNode.getOnDiskName(), destinationStorageNode.getOnDiskFormattedURL()));
+                throw new FileAlreadyExistsException("Node '%s' already exists in '%s' directory.".formatted(newStorageNode.getOnDiskName(), destinationStorageNode.getOnDiskURL()));
             }
         }
 

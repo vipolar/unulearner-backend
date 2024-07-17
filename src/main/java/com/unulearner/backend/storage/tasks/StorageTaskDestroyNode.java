@@ -1,7 +1,7 @@
 package com.unulearner.backend.storage.tasks;
 
-import java.util.ArrayList;
-import java.util.List;
+import java.util.HashMap;
+import java.util.Map;
 
 import com.unulearner.backend.storage.data.StorageTree;
 import com.unulearner.backend.storage.entities.StorageNode;
@@ -20,7 +20,7 @@ public class StorageTaskDestroyNode extends StorageTaskBaseBatch {
 
         final StorageTaskDestroyNodeCurrentAction storageTaskAction = new StorageTaskDestroyNodeCurrentAction(null, targetStorageNode);
 
-        storageTaskAction.setActionHeader("Remove %s '%s' permanently".formatted(this.rootTargetStorageNode.isDirectory() ? "directory" : "file", this.rootTargetStorageNode.getOnDiskFormattedURL()));
+        storageTaskAction.setActionHeader("Remove %s '%s' permanently".formatted(this.rootTargetStorageNode.isDirectory() ? "directory" : "file", this.rootTargetStorageNode.getOnDiskURL()));
         storageTaskAction.setMessage("%s removal task has been successfully initialized".formatted(this.rootTargetStorageNode.isDirectory() ? "Directory" : "File"));
 
         this.setStorageTaskAction(storageTaskAction);
@@ -29,23 +29,26 @@ public class StorageTaskDestroyNode extends StorageTaskBaseBatch {
     }
 
     @Override
-    public synchronized void execute(String updatedName, String onExceptionAction, Boolean onExceptionActionIsPersistent) {
+    public synchronized void execute(Map<String, Object> taskParameters) {
         final StorageTaskDestroyNodeCurrentAction storageTaskCurrentAction = (StorageTaskDestroyNodeCurrentAction) this.getStorageTaskAction();
 
+        final Boolean cancel = taskParameters != null ? (Boolean) taskParameters.get("cancel") : null;
+        final String onExceptionAction = taskParameters != null ? (String) taskParameters.get("onExceptionAction") : null;
+        final Boolean onExceptionActionIsPersistent = taskParameters != null ? (Boolean) taskParameters.get("setAsDefault") : null;
+
         if (storageTaskCurrentAction.getParentStorageTaskAction() == null && storageTaskCurrentAction.getTargetStorageNode().getId() == null) {
-            storageTaskCurrentAction.setMessage("%s '%s' removal task finished successfully!".formatted(this.rootTargetStorageNode.isDirectory() ? "Directory" : "File", this.rootTargetStorageNode.getOnDiskFormattedURL()));
+            storageTaskCurrentAction.setMessage("%s '%s' removal task finished successfully!".formatted(this.rootTargetStorageNode.isDirectory() ? "Directory" : "File", this.rootTargetStorageNode.getOnDiskURL()));
             this.setCurrentState(TaskState.COMPLETED);
             return;
         }
 
-        if (onExceptionAction != null && onExceptionAction.equals("cancel")) {
-            storageTaskCurrentAction.setMessage("%s '%s' removal task was cancelled...".formatted(this.rootTargetStorageNode.isDirectory() ? "Directory" : "File", this.rootTargetStorageNode.getOnDiskFormattedURL()));
+        if (cancel != null && cancel == true) {
+            storageTaskCurrentAction.setMessage("%s '%s' removal task was cancelled...".formatted(this.rootTargetStorageNode.isDirectory() ? "Directory" : "File", this.rootTargetStorageNode.getOnDiskURL()));
             this.setCurrentState(TaskState.CANCELLED);
             return;
         }
 
         if (onExceptionAction != null) {
-            onExceptionActionIsPersistent = onExceptionActionIsPersistent != null ? onExceptionActionIsPersistent : false;
             this.getTaskExceptionHandler().setOnExceptionAction(storageTaskCurrentAction.getTargetStorageNode(), storageTaskCurrentAction.getExceptionType(), onExceptionAction, onExceptionActionIsPersistent);
         }
 
@@ -61,34 +64,38 @@ public class StorageTaskDestroyNode extends StorageTaskBaseBatch {
                         case "IOException":
                             switch (exceptionAction) {
                                 case "skip":
-                                    storageTaskCurrentAction.setMessage("%s '%s' removal was skipped...".formatted(storageTaskCurrentAction.getTargetStorageNode().isDirectory() ? "Directory" : "File", storageTaskCurrentAction.getTargetStorageNode().getOnDiskFormattedURL()));
+                                    storageTaskCurrentAction.setMessage("%s '%s' removal was skipped...".formatted(storageTaskCurrentAction.getTargetStorageNode().isDirectory() ? "Directory" : "File", storageTaskCurrentAction.getTargetStorageNode().getOnDiskURL()));
                                     this.setCurrentState(TaskState.EXECUTING);
                                     this.advanceStorageTask();
                                     return;
                                 default:
-                                    List<OnExceptionOption> onPhysicalOptions = new ArrayList<>() {{
-                                        add(new OnExceptionOption("skip", "Skip %s".formatted(storageTaskCurrentAction.getTargetStorageNode().isDirectory() ? "directory" : "file"), true));
+                                    final Map<String, OnExceptionOption> onExceptionOptions = new HashMap<>() {{
+                                        put("skip", new OnExceptionOption("Skip %s".formatted(storageTaskCurrentAction.getTargetStorageNode().isDirectory() ? "directory" : "file"), new HashMap<>() {{
+                                            put("setAsDefault", "boolean");
+                                        }}));
                                     }};
         
-                                    storageTaskCurrentAction.setMessage("%s '%s' could not be removed due to a persistent I/O exception occurring".formatted(storageTaskCurrentAction.getTargetStorageNode().isDirectory() ? "Directory" : "File", storageTaskCurrentAction.getTargetStorageNode().getOnDiskFormattedURL()));
-                                    this.getTaskExceptionHandler().setExceptionOptions(onPhysicalOptions);
+                                    storageTaskCurrentAction.setMessage("%s '%s' could not be removed due to a persistent I/O exception occurring".formatted(storageTaskCurrentAction.getTargetStorageNode().isDirectory() ? "Directory" : "File", storageTaskCurrentAction.getTargetStorageNode().getOnDiskURL()));
+                                    this.getTaskExceptionHandler().setExceptionOptions(onExceptionOptions);
                                     this.setCurrentState(TaskState.EXCEPTION);
                                     return;
                             }  
                         default:
                             switch (exceptionAction) {
                                 case "skip":
-                                    storageTaskCurrentAction.setMessage("%s '%s' removal was skipped...".formatted(storageTaskCurrentAction.getTargetStorageNode().isDirectory() ? "Directory" : "File", storageTaskCurrentAction.getTargetStorageNode().getOnDiskFormattedURL()));
+                                    storageTaskCurrentAction.setMessage("%s '%s' removal was skipped...".formatted(storageTaskCurrentAction.getTargetStorageNode().isDirectory() ? "Directory" : "File", storageTaskCurrentAction.getTargetStorageNode().getOnDiskURL()));
                                     this.setCurrentState(TaskState.EXECUTING);
                                     this.advanceStorageTask();
                                     return;
                                 default:
-                                    List<OnExceptionOption> onGeneralOptions = new ArrayList<>() {{
-                                        add(new OnExceptionOption("skip", "Skip %s".formatted(storageTaskCurrentAction.getTargetStorageNode().isDirectory() ? "directory" : "file"), true));
+                                    final Map<String, OnExceptionOption> onExceptionOptions = new HashMap<>() {{
+                                        put("skip", new OnExceptionOption("Skip %s".formatted(storageTaskCurrentAction.getTargetStorageNode().isDirectory() ? "directory" : "file"), new HashMap<>() {{
+                                            put("setAsDefault", "boolean");
+                                        }}));
                                     }};
-        
-                                    storageTaskCurrentAction.setMessage("%s '%s' could not be removed due to an unexpected exception occurring".formatted(storageTaskCurrentAction.getTargetStorageNode().isDirectory() ? "Directory" : "File", storageTaskCurrentAction.getTargetStorageNode().getOnDiskFormattedURL()));
-                                    this.getTaskExceptionHandler().setExceptionOptions(onGeneralOptions);
+
+                                    storageTaskCurrentAction.setMessage("%s '%s' could not be removed due to an unexpected exception occurring".formatted(storageTaskCurrentAction.getTargetStorageNode().isDirectory() ? "Directory" : "File", storageTaskCurrentAction.getTargetStorageNode().getOnDiskURL()));
+                                    this.getTaskExceptionHandler().setExceptionOptions(onExceptionOptions);
                                     this.setCurrentState(TaskState.EXCEPTION);
                                     return;
                             }  
@@ -100,7 +107,7 @@ public class StorageTaskDestroyNode extends StorageTaskBaseBatch {
                     storageTaskCurrentAction.setTargetStorageNode(this.storageTreeExecute().deleteStorageNode(storageTaskCurrentAction.getTargetStorageNode()));
                 }
 
-                storageTaskCurrentAction.setMessage("%s '%s' has been permanently removed from storage successfully.".formatted(storageTaskCurrentAction.getTargetStorageNode().isDirectory() ? "Directory" : "File", storageTaskCurrentAction.getTargetStorageNode().getOnDiskFormattedURL()));
+                storageTaskCurrentAction.setMessage("%s '%s' has been permanently removed from storage successfully.".formatted(storageTaskCurrentAction.getTargetStorageNode().isDirectory() ? "Directory" : "File", storageTaskCurrentAction.getTargetStorageNode().getOnDiskURL()));
                 storageTaskCurrentAction.setExceptionMessage(null);
                 storageTaskCurrentAction.setExceptionType(null);
 

@@ -1,5 +1,6 @@
 package com.unulearner.backend.storage;
 
+import java.util.Map;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpHeaders;
@@ -17,7 +18,6 @@ import org.springframework.web.bind.annotation.RequestMapping;
 
 import com.unulearner.backend.storage.entities.StorageNode;
 import com.unulearner.backend.storage.properties.StorageProperties;
-import com.unulearner.backend.storage.responses.StorageServiceError;
 import com.unulearner.backend.storage.responses.StorageServiceResponse;
 
 @Controller
@@ -25,14 +25,12 @@ import com.unulearner.backend.storage.responses.StorageServiceResponse;
 public class StorageController {
     private final Storage storageService;
     private final StorageProperties storageProperties;
-    private final Boolean debugPrintStackTrace;
 
     public StorageController(Storage storageService, StorageProperties storageProperties) {
         this.storageService = storageService;
         this.storageProperties = storageProperties;
 
-        /* We'll be getting some more storage properties here (mostly about logging) */
-        this.debugPrintStackTrace = this.storageProperties.getDebugPrintStackTrace();
+        /* We'll be getting some storage properties here (mostly in regards to logging) */
     }
 
     //**********************************************************//
@@ -57,12 +55,7 @@ public class StorageController {
             final StorageServiceResponse response = storageService.createFileStorageNode(content, description, destinationDirectoryID);
             return new ResponseEntity<StorageServiceResponse>(response, HttpStatus.OK);
         } catch (Exception exception) {
-            if (debugPrintStackTrace) {
-                exception.printStackTrace();
-            }
-
-            final StorageServiceError error = new StorageServiceError("Failed to upload file '%s' to '%s' directory! Error: %s".formatted(content.getOriginalFilename(), destinationDirectoryID.toString(), exception.getMessage()));
-            return new ResponseEntity<StorageServiceError>(error, HttpStatus.INTERNAL_SERVER_ERROR);
+            return new ResponseEntity<String>("Failed to upload file '%s' to '%s' directory! Error: %s".formatted(content.getOriginalFilename(), destinationDirectoryID.toString(), exception.getMessage()), HttpStatus.INTERNAL_SERVER_ERROR);
         }
     }
 
@@ -82,12 +75,7 @@ public class StorageController {
             final StorageServiceResponse response = storageService.updateFileStorageNode(targetFileID, updatedName, updatedDescription);
             return new ResponseEntity<StorageServiceResponse>(response, HttpStatus.OK);
         } catch (Exception exception) {
-            if (debugPrintStackTrace) {
-                exception.printStackTrace();
-            }
-
-            final StorageServiceError error = new StorageServiceError("Failed to update '%s' file! Error: %s".formatted(targetFileID.toString(), exception.getMessage()));
-            return new ResponseEntity<StorageServiceError>(error, HttpStatus.INTERNAL_SERVER_ERROR);
+            return new ResponseEntity<String>("Failed to update '%s' file! Error: %s".formatted(targetFileID.toString(), exception.getMessage()), HttpStatus.INTERNAL_SERVER_ERROR);
         }
     }
 
@@ -105,12 +93,7 @@ public class StorageController {
             final StorageServiceResponse response = storageService.transferFileStorageNode(targetFileID, destinationDirectoryID, true);
             return new ResponseEntity<StorageServiceResponse>(response, HttpStatus.OK);
         } catch (Exception exception) {
-            if (debugPrintStackTrace) {
-                exception.printStackTrace();
-            }
-
-            final StorageServiceError error = new StorageServiceError("Failed to copy file '%s' to '%s' directory! Error: %s".formatted(targetFileID, destinationDirectoryID, exception.getMessage()));
-            return new ResponseEntity<StorageServiceError>(error, HttpStatus.INTERNAL_SERVER_ERROR);
+            return new ResponseEntity<String>("Failed to copy file '%s' to '%s' directory! Error: %s".formatted(targetFileID, destinationDirectoryID, exception.getMessage()), HttpStatus.INTERNAL_SERVER_ERROR);
         }
     }
 
@@ -128,12 +111,7 @@ public class StorageController {
             final StorageServiceResponse response = storageService.transferFileStorageNode(targetFileID, destinationDirectoryID, false);
             return new ResponseEntity<StorageServiceResponse>(response, HttpStatus.OK);
         } catch (Exception exception) {
-            if (debugPrintStackTrace) {
-                exception.printStackTrace();
-            }
-
-            final StorageServiceError error = new StorageServiceError("Failed to move file '%s' to '%s' directory! Error: %s".formatted(targetFileID, destinationDirectoryID, exception.getMessage()));
-            return new ResponseEntity<StorageServiceError>(error, HttpStatus.INTERNAL_SERVER_ERROR);
+            return new ResponseEntity<String>("Failed to move file '%s' to '%s' directory! Error: %s".formatted(targetFileID, destinationDirectoryID, exception.getMessage()), HttpStatus.INTERNAL_SERVER_ERROR);
         }
     }
 
@@ -149,12 +127,7 @@ public class StorageController {
             final StorageServiceResponse response = storageService.deleteFileStorageNode(targetFileID);
             return new ResponseEntity<StorageServiceResponse>(response, HttpStatus.OK);
         } catch (Exception exception) {
-            if (debugPrintStackTrace) {
-                exception.printStackTrace();
-            }
-
-            final StorageServiceError error = new StorageServiceError("File '%s' could not be removed: %s".formatted(targetFileID.toString(), exception.getMessage()));
-            return new ResponseEntity<StorageServiceError>(error, HttpStatus.INTERNAL_SERVER_ERROR);
+            return new ResponseEntity<String>("File '%s' could not be removed: %s".formatted(targetFileID.toString(), exception.getMessage()), HttpStatus.INTERNAL_SERVER_ERROR);
         }
     }
 
@@ -171,12 +144,7 @@ public class StorageController {
             final Resource returnResource = storageService.downloadFileStorageNode(targetFileID);
             return ResponseEntity.ok().header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + returnResource.getFilename() + "\"").body(returnResource);
         } catch (Exception exception) {
-            if (debugPrintStackTrace) {
-                exception.printStackTrace();
-            }
-
-            final StorageServiceError error = new StorageServiceError("File '%s' could not be download: %s".formatted(targetFileID.toString(), exception.getMessage()));
-            return new ResponseEntity<StorageServiceError>(error, HttpStatus.INTERNAL_SERVER_ERROR);
+            return new ResponseEntity<String>("File '%s' could not be downloaded: %s".formatted(targetFileID.toString(), exception.getMessage()), HttpStatus.INTERNAL_SERVER_ERROR);
         }
     }
 
@@ -202,12 +170,7 @@ public class StorageController {
             final StorageServiceResponse response = storageService.createDirectoryStorageNode(directory, description, destinationDirectoryID);
             return new ResponseEntity<StorageServiceResponse>(response, HttpStatus.OK);
         } catch (Exception exception) {
-            if (debugPrintStackTrace) {
-                exception.printStackTrace();
-            }
-
-            final StorageServiceError error = new StorageServiceError("Failed to create new directory '%s' and add it to '%s' directory! Error: %s".formatted(directory, destinationDirectoryID.toString(), exception.getMessage()));
-            return new ResponseEntity<StorageServiceError>(error, HttpStatus.INTERNAL_SERVER_ERROR);
+            return new ResponseEntity<String>("Failed to create new directory '%s' and add it to '%s' directory! Error: %s".formatted(directory, destinationDirectoryID.toString(), exception.getMessage()), HttpStatus.INTERNAL_SERVER_ERROR);
         }
     }
 
@@ -227,12 +190,7 @@ public class StorageController {
             final StorageServiceResponse response = storageService.updateDirectoryStorageNode(targetDirectoryID, updatedName, updatedDescription);
             return new ResponseEntity<StorageServiceResponse>(response, HttpStatus.OK);
         } catch (Exception exception) {
-            if (debugPrintStackTrace) {
-                exception.printStackTrace();
-            }
-
-            final StorageServiceError error = new StorageServiceError("Failed to update '%s' directory! Error: %s".formatted(targetDirectoryID.toString(), exception.getMessage()));
-            return new ResponseEntity<StorageServiceError>(error, HttpStatus.INTERNAL_SERVER_ERROR);
+            return new ResponseEntity<String>("Failed to update '%s' directory! Error: %s".formatted(targetDirectoryID.toString(), exception.getMessage()), HttpStatus.INTERNAL_SERVER_ERROR);
         }
     }
 
@@ -250,12 +208,7 @@ public class StorageController {
             final StorageServiceResponse response = storageService.transferDirectoryStorageNode(targetDirectoryID, destinationDirectoryID, true);
             return new ResponseEntity<StorageServiceResponse>(response, HttpStatus.OK);
         } catch (Exception exception) {
-            if (debugPrintStackTrace) {
-                exception.printStackTrace();
-            }
-
-            final StorageServiceError error = new StorageServiceError("Failed to copy directory '%s' to '%s' directory! Error: %s".formatted(targetDirectoryID, destinationDirectoryID, exception.getMessage()));
-            return new ResponseEntity<StorageServiceError>(error, HttpStatus.INTERNAL_SERVER_ERROR);
+            return new ResponseEntity<String>("Failed to copy directory '%s' to '%s' directory! Error: %s".formatted(targetDirectoryID, destinationDirectoryID, exception.getMessage()), HttpStatus.INTERNAL_SERVER_ERROR);
         }
     }
 
@@ -273,12 +226,7 @@ public class StorageController {
             final StorageServiceResponse response = storageService.transferDirectoryStorageNode(targetDirectoryID, destinationDirectoryID, false);
             return new ResponseEntity<StorageServiceResponse>(response, HttpStatus.OK);
         } catch (Exception exception) {
-            if (debugPrintStackTrace) {
-                exception.printStackTrace();
-            }
-
-            final StorageServiceError error = new StorageServiceError("Failed to move directory '%s' to '%s' directory! Error: %s".formatted(targetDirectoryID, destinationDirectoryID, exception.getMessage()));
-            return new ResponseEntity<StorageServiceError>(error, HttpStatus.INTERNAL_SERVER_ERROR);
+            return new ResponseEntity<String>("Failed to move directory '%s' to '%s' directory! Error: %s".formatted(targetDirectoryID, destinationDirectoryID, exception.getMessage()), HttpStatus.INTERNAL_SERVER_ERROR);
         }
     }
 
@@ -294,12 +242,7 @@ public class StorageController {
             final StorageServiceResponse response = storageService.deleteDirectoryStorageNode(targetDirectoryID);
             return new ResponseEntity<StorageServiceResponse>(response, HttpStatus.OK);
         } catch (Exception exception) {
-            if (debugPrintStackTrace) {
-                exception.printStackTrace();
-            }
-
-            final StorageServiceError error = new StorageServiceError("Directory '%s' could not be removed: %s".formatted(targetDirectoryID.toString(), exception.getMessage()));
-            return new ResponseEntity<StorageServiceError>(error, HttpStatus.INTERNAL_SERVER_ERROR);
+            return new ResponseEntity<String>("Directory '%s' could not be removed: %s".formatted(targetDirectoryID.toString(), exception.getMessage()), HttpStatus.INTERNAL_SERVER_ERROR);
         }
     }
 
@@ -315,12 +258,7 @@ public class StorageController {
             final StorageNode response = storageService.downloadDirectoryStorageNode(targetDirectoryID);
             return new ResponseEntity<StorageNode>(response, HttpStatus.OK);
         } catch (Exception exception) {
-            if (debugPrintStackTrace) {
-                exception.printStackTrace();
-            }
-
-            final StorageServiceError error = new StorageServiceError("Directory '%s' could not be download: %s".formatted(targetDirectoryID.toString(), exception.getMessage()));
-            return new ResponseEntity<StorageServiceError>(error, HttpStatus.INTERNAL_SERVER_ERROR);
+            return new ResponseEntity<String>("Directory '%s' could not be downloaded: %s".formatted(targetDirectoryID.toString(), exception.getMessage()), HttpStatus.INTERNAL_SERVER_ERROR);
         }
     }
 
@@ -332,52 +270,21 @@ public class StorageController {
 
     /**
      * @param taskID UUID of the task to execute
-     * @param skipOnException directive to dictate whether to skip {@code on exception} or not
-     * @param skipOnExceptionIsPersistent whether the aforementioned {@code on-exception skip} applies to just this or all {@code StorageTreeNodes} similar to it 
-     * @param onException directive to dictate {@code on-exception action}
-     * @param onExceptionIsPersistent whether the aforementioned {@code on-exception action} applies to just this or all {@code StorageTreeNodes} similar to it 
+     * @param taskParameters pretty self explanatory
      * @return <b>{@code ResponseEntity}</b> wrapping a <b>{@code StorageTaskState}</b> containing the appropriate <b><i>{@code StorageTreeNode(s)}</i></b> or a <b>{@code StorageServiceError}</b> containing the <b><i>{@code !error message!}</i></b>
      */
     @GetMapping("/execute/task/{taskID}")
     public ResponseEntity<?> executeTask(
         @PathVariable(name = "taskID", required = true) UUID taskID,
-        @RequestParam(name = "onExceptionAction", required = false) String onExceptionAction,
-        @RequestParam(name = "onExceptionIsActionPersistent", required = false) Boolean onExceptionIsActionPersistent) {
+        @RequestParam(name = "taskParameters", required = false) Map<String, Object> taskParameters) {
 
         try {
-            final StorageServiceResponse response = storageService.executeStorageTask(taskID, onExceptionAction, onExceptionIsActionPersistent);
+            final StorageServiceResponse response = storageService.executeStorageTask(taskID, taskParameters);
             return new ResponseEntity<StorageServiceResponse>(response, HttpStatus.OK);
         } catch (Exception exception) {
-            if (debugPrintStackTrace) {
-                exception.printStackTrace();
-            }
-
-            final StorageServiceError error = new StorageServiceError("Task '%s' could not be executed: %s".formatted(taskID.toString(), exception.getMessage()));
-            return new ResponseEntity<StorageServiceError>(error, HttpStatus.INTERNAL_SERVER_ERROR);
+            return new ResponseEntity<String>("Task '%s' could not be executed: %s".formatted(taskID.toString(), exception.getMessage()), HttpStatus.INTERNAL_SERVER_ERROR);
         }
     }
-
-    /**
-     * @param taskID UUID of the task to cancel
-     * @return <b>{@code ResponseEntity}</b> wrapping a <b>{@code StorageTaskState}</b> containing the appropriate <b><i>{@code StorageTreeNode(s)}</i></b> or a <b>{@code StorageServiceError}</b> containing the <b><i>{@code !error message!}</i></b>
-     */
-    @GetMapping("/cancel/task/{taskID}")
-    public ResponseEntity<?> cancelTask(
-        @PathVariable(name = "taskID", required = true) UUID taskID) {
-
-        try {
-            final StorageServiceResponse response = storageService.executeStorageTask(taskID, null, null);
-            return new ResponseEntity<StorageServiceResponse>(response, HttpStatus.OK);
-        } catch (Exception exception) {
-            if (debugPrintStackTrace) {
-                exception.printStackTrace();
-            }
-
-            final StorageServiceError error = new StorageServiceError("Task '%s' could not be canceled: %s".formatted(taskID.toString(), exception.getMessage()));
-            return new ResponseEntity<StorageServiceError>(error, HttpStatus.INTERNAL_SERVER_ERROR);
-        }
-    }
-    
 
     //***************************************************//
     //*                                                 *//
@@ -394,12 +301,7 @@ public class StorageController {
             final StorageNode returnValue = storageService.downloadRootDirectoryStorageNode();
             return new ResponseEntity<>(returnValue, HttpStatus.OK);
         } catch (Exception exception) {
-            if (debugPrintStackTrace) {
-                exception.printStackTrace();
-            }
-
-            final StorageServiceError error = new StorageServiceError("Failed to download the *ROOT* directory of the permanent storage! Error: %s".formatted(exception.getMessage()));
-            return new ResponseEntity<StorageServiceError>(error, HttpStatus.INTERNAL_SERVER_ERROR);
+            return new ResponseEntity<String>("Root directory could not be downloaded: %s".formatted(exception.getMessage()), HttpStatus.INTERNAL_SERVER_ERROR);
         }
     }
 }

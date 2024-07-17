@@ -23,11 +23,8 @@ import org.hibernate.annotations.CreationTimestamp;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonBackReference;
 import com.fasterxml.jackson.annotation.JsonManagedReference;
-import com.fasterxml.jackson.databind.annotation.JsonSerialize;
 
 import com.unulearner.backend.storage.extensions.NodePath;
-import com.unulearner.backend.storage.extensions.OnDiskURLSerializer;
-import com.unulearner.backend.storage.extensions.OnCommitDateSerializer;
 
 import com.unulearner.backend.storage.exceptions.StorageServiceException;
 
@@ -78,16 +75,15 @@ public class StorageNode {
      * From this property we can easily derive the full, physical path of a file/directory.
      * Due to its inherent uniqueness and parallel to physical paths "url" property is a great choice to serve as an ID!
      */
-    @JsonSerialize(using = OnDiskURLSerializer.class)
     @Column(name = "ondiskurl", columnDefinition = "TEXT COLLATE \"C\"", unique = true, nullable = false)
     private String onDiskURL;
 
     public String getOnDiskURL() {
+        if (this.onDiskURL != null && !this.onDiskURL.startsWith("/")) {
+            return "/" + this.onDiskURL;
+        }
+        
         return this.onDiskURL;
-    }
-
-    public String getOnDiskFormattedURL() {
-        return "/%s".formatted(this.onDiskURL);
     }
 
     public void setOnDiskURL(String onDiskURL) {
@@ -128,7 +124,6 @@ public class StorageNode {
      * This property does not have a setter as it should never be set manually.
      */
     @CreationTimestamp
-    @JsonSerialize(using = OnCommitDateSerializer.class)
     @Column(name = "created", columnDefinition = "TIMESTAMP", nullable = false, updatable = false)
     private Date created;
 
@@ -141,7 +136,6 @@ public class StorageNode {
      * This property does not have a setter as it should never be set manually.
      */
     @UpdateTimestamp
-    @JsonSerialize(using = OnCommitDateSerializer.class)
     @Column(name = "updated", columnDefinition = "TIMESTAMP", nullable = false, updatable = true)
     private Date updated;
 
@@ -219,21 +213,6 @@ public class StorageNode {
 
     public Boolean isDirectory() {
         return this.children != null;
-    }
-
-    /**
-     * UUID of the task the node is busy with
-     */
-    @Transient
-    @JsonIgnore
-    private UUID busyWith;
-
-    public UUID getBusyWith() {
-        return busyWith;
-    }
-
-    public void setBusyWith(UUID busyWith) {
-        this.busyWith = busyWith;
     }
 
     /**

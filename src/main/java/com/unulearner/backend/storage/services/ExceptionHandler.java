@@ -3,13 +3,12 @@ package com.unulearner.backend.storage.services;
 import com.unulearner.backend.storage.entities.StorageNode;
 
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
 public class ExceptionHandler {
+    private Map<String, OnExceptionOption> exceptionOptions;
     private final Map<String, OnExceptionActon> OEAMap;
-    private List<OnExceptionOption> exceptionOptions;
 
     public ExceptionHandler() {
         this.OEAMap = new HashMap<>();
@@ -17,34 +16,28 @@ public class ExceptionHandler {
 
     /* TODO: basically everything down there */
     public static class OnExceptionOption {
-        private final String value;
         private final String displayText;
-        private final Boolean isPersistable;
+        private final Map<String, String> parameters;
 
-        public OnExceptionOption(String value, String displayText, Boolean isPersistable) {
-            this.value = value;
+        public OnExceptionOption(String displayText, Map<String, String> params) {
+            this.parameters = params;
             this.displayText = displayText;
-            this.isPersistable = isPersistable;
-        }
-
-        public String getValue() {
-            return this.value;
         }
 
         public String getDisplayText() {
             return this.displayText;
         }
 
-        public Boolean getIsPersistable() {
-            return this.isPersistable;
+        public Map<String, String> getParameters() {
+            return this.parameters;
         }
     }
 
-    public List<OnExceptionOption> getExceptionOptions() {
+    public Map<String, OnExceptionOption> getExceptionOptions() {
         return this.exceptionOptions;
     }
 
-    public void setExceptionOptions(List<OnExceptionOption> exceptionOptions) {
+    public void setExceptionOptions(Map<String, OnExceptionOption> exceptionOptions) {
         this.exceptionOptions = exceptionOptions;
     }
 
@@ -80,14 +73,15 @@ public class ExceptionHandler {
     }
 
     public void setOnExceptionAction(StorageNode exceptionNode, String exceptionType, String onExceptionAction, Boolean onExceptionActionIsPersistent) {
-        if (exceptionNode == null || exceptionType == null || onExceptionAction == null || onExceptionActionIsPersistent == null) {
+        if (exceptionNode == null || exceptionType == null || onExceptionAction == null) {
             return;
         }
 
-        OnExceptionActon onExceptionActon = this.OEAMap.putIfAbsent(onExceptionAction, new OnExceptionActon());
+        final Boolean setOnExceptionActionAsDefault = onExceptionActionIsPersistent != null ? onExceptionActionIsPersistent : false;
+        final OnExceptionActon onExceptionActon = this.OEAMap.putIfAbsent(onExceptionAction, new OnExceptionActon());
 
         onExceptionActon.setOnCurrentNode(onExceptionAction);
-        if (onExceptionActionIsPersistent) {
+        if (setOnExceptionActionAsDefault) {
             if (exceptionNode.isDirectory()) {
                 onExceptionActon.setOnDirectory(onExceptionAction);
             } else {

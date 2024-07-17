@@ -1,6 +1,7 @@
 package com.unulearner.backend.storage;
 
 import java.net.URI;
+import java.util.Map;
 import java.util.UUID;
 
 import org.springframework.core.io.Resource;
@@ -214,7 +215,7 @@ public class Storage {
     //*                                                 *//
     //***************************************************//
 
-    public StorageServiceResponse executeStorageTask(UUID taskID, String onExceptionAction, Boolean onExceptionActionIsPersistent) throws Exception {
+    public StorageServiceResponse executeStorageTask(UUID taskID, Map<String, Object> taskParameters) throws Exception {
         try {
             if (taskID == null) {
                 throw new StorageServiceException("Task ID cannot be null!".formatted());
@@ -226,8 +227,8 @@ public class Storage {
                 throw new StorageServiceException("Task under the ID could not be retrieved".formatted());
             }
 
-            /* Synchronized, setters invisible, whatever... */
-            storageTask.execute(null, onExceptionAction, onExceptionActionIsPersistent);
+            /* Synchronized, setters invisible, etc. */
+            storageTask.execute(taskParameters);
 
             return storageTask.getStorageServiceResponse();
         } catch (Exception exception) {
