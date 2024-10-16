@@ -16,7 +16,6 @@ import java.io.IOException;
 import java.nio.file.FileAlreadyExistsException;
 import com.unulearner.backend.storage.exceptions.FileNameGenerationException;
 import com.unulearner.backend.storage.exceptions.FileNameValidationException;
-import com.unulearner.backend.storage.exceptions.FilePublishingRaceException;
 
 public class StorageTaskTransferNode extends StorageTaskBaseBatch {
     private final StorageNode rootDestinationStorageNode;
@@ -75,7 +74,7 @@ public class StorageTaskTransferNode extends StorageTaskBaseBatch {
 
                 if (exceptionType != null) {
                     switch (exceptionType) {
-                        case "FileAlreadyExistsException":  /* TODO: add option to publish the conflicting node if it isn't published */
+                        case "FileAlreadyExistsException":
                             if (storageTaskCurrentAction.getConflictStorageNode() == null) {
                                 throw new RuntimeException("%s '%s' could not be %s to directory '%s' due to a supposed conflicting node, existence of which can neither be confirmed nor denied...".formatted(storageTaskCurrentAction.getTargetStorageNode().isDirectory() ? "Directory" : "File", storageTaskCurrentAction.getTargetStorageNode().getOnDiskURL(), this.persistOriginalStorageNode ? "copied" : "moved", storageTaskCurrentAction.getDestinationStorageNode().getOnDiskURL()));
                             }
@@ -114,24 +113,26 @@ public class StorageTaskTransferNode extends StorageTaskBaseBatch {
                                     this.advanceStorageTask();
                                     return;
                                 default:
-                                    /* TODO: make merge and replace conditional!!! */
-                                    final ArrayList<OnExceptionOption> onExceptionOptions = new ArrayList<>(Arrays.asList(
-                                        new OnExceptionOption("keep", "Keep both".formatted(),
+                                    final ArrayList<OnExceptionOption> onExceptionOptions = new ArrayList<>();
+                                    onExceptionOptions.add(new OnExceptionOption("keep", "Keep both".formatted(),
+                                        new Parameter("setAsDefault", "Set as Default".formatted(), "boolean")
+                                    ));
+                                    if (storageTaskCurrentAction.getNewStorageNode().isDirectory() && storageTaskCurrentAction.getConflictStorageNode().isDirectory()) {
+                                        onExceptionOptions.add(new OnExceptionOption("merge", "Merge directories".formatted(),
                                             new Parameter("setAsDefault", "Set as Default".formatted(), "boolean")
-                                        ),
-                                        new OnExceptionOption("merge", "Merge directories".formatted(),
+                                        ));
+                                    }
+                                    onExceptionOptions.add(new OnExceptionOption("rename", "Rename manually".formatted(),
+                                        new Parameter("updatedName", "Updated Name".formatted(), "string"),
+                                        new Parameter("setAsDefault", "Set as Default".formatted(), "boolean")
+                                    ));
+                                    if (!storageTaskCurrentAction.getNewStorageNode().isDirectory() && !storageTaskCurrentAction.getConflictStorageNode().isDirectory()) {
+                                        onExceptionOptions.add(new OnExceptionOption("replace", "Replace file".formatted(),
                                             new Parameter("setAsDefault", "Set as Default".formatted(), "boolean")
-                                        ),
-                                        new OnExceptionOption("rename", "Rename manually".formatted(),
-                                            new Parameter("updatedName", "Updated Name".formatted(), "string"),
-                                            new Parameter("setAsDefault", "Set as Default".formatted(), "boolean")
-                                        ),
-                                        new OnExceptionOption("replace", "Replace file".formatted(),
-                                            new Parameter("setAsDefault", "Set as Default".formatted(), "boolean")
-                                        ),
-                                        new OnExceptionOption("skip", "Skip %s".formatted(storageTaskCurrentAction.getTargetStorageNode().isDirectory() ? "directory" : "file"),
-                                            new Parameter("setAsDefault", "Set as Default".formatted(), "boolean")
-                                        )
+                                        ));
+                                    }
+                                    onExceptionOptions.add(new OnExceptionOption("skip", "Skip %s".formatted(storageTaskCurrentAction.getTargetStorageNode().isDirectory() ? "directory" : "file"),
+                                        new Parameter("setAsDefault", "Set as Default".formatted(), "boolean")
                                     ));
 
                                     storageTaskCurrentAction.setMessage("%s '%s' could not be %s to directory '%s' due to a conflicting node already in place.".formatted(storageTaskCurrentAction.getTargetStorageNode().isDirectory() ? "Directory" : "File", storageTaskCurrentAction.getTargetStorageNode().getOnDiskURL(), this.persistOriginalStorageNode ? "copied" : "moved", storageTaskCurrentAction.getDestinationStorageNode().getOnDiskURL()));
@@ -277,18 +278,8 @@ public class StorageTaskTransferNode extends StorageTaskBaseBatch {
                 this.advanceStorageTask();
                 return;
             } catch (FileAlreadyExistsException exception) {
-                StorageNode conflictingStorageNode = null;
-
-                try { /* Here we attempt to find the conflicting node. And if we can't find it, we try to recover it */
-                    conflictingStorageNode = this.storageTreeExecute().recoverStorageNode(storageTaskCurrentAction.getNewStorageNode().getOnDiskName(), storageTaskCurrentAction.getDestinationStorageNode());
-                    conflictingStorageNode = this.storageTreeExecute().publishStorageNode(conflictingStorageNode);
-                    storageTaskCurrentAction.setConflictStorageNode(conflictingStorageNode);
-                } catch (FilePublishingRaceException publishingException) {
-                    /* Most likely a race condition. As I have no ideas yet as to how to handle them... */
-                    storageTaskCurrentAction.setExceptionType(publishingException.getClass().getSimpleName());
-                    storageTaskCurrentAction.setExceptionMessage(publishingException.getMessage());
-                    storageTaskCurrentAction.setConflictStorageNode(null);
-                    continue;
+                try { /* Here we attempt to find the conflicting node and recover it */
+                    storageTaskCurrentAction.setConflictStorageNode(this.storageTreeExecute().recoverStorageNode(storageTaskCurrentAction.getNewStorageNode().getOnDiskName(), storageTaskCurrentAction.getDestinationStorageNode()));
                 } catch (Exception recoveryException) {
                     /* Wild territories... conflict without a conflicting node? Gonna be fun!!! */
                     storageTaskCurrentAction.setExceptionType(recoveryException.getClass().getSimpleName());

@@ -322,6 +322,7 @@ public class StorageTree {
 
         newStorageNode.setIsAccessible(true);
 
+        /* TODO: bring this node to the attention of the admin! */
         return newStorageNode;
     }
 

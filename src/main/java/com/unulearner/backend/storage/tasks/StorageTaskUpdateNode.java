@@ -14,7 +14,6 @@ import com.unulearner.backend.storage.services.ExceptionHandler.OnExceptionOptio
 import java.io.IOException;
 import java.nio.file.FileAlreadyExistsException;
 import com.unulearner.backend.storage.exceptions.FileNameValidationException;
-import com.unulearner.backend.storage.exceptions.FilePublishingRaceException;
 
 public class StorageTaskUpdateNode extends StorageTaskBaseBatch {
     private final StorageNode rootTargetStorageNode;
@@ -187,18 +186,8 @@ public class StorageTaskUpdateNode extends StorageTaskBaseBatch {
                 this.advanceStorageTask();
                 return;
             } catch (FileAlreadyExistsException exception) {
-                StorageNode conflictingStorageNode = null;
-
-                try { /* Here we attempt to find the conflicting node. And if we can't find it, we try to recover it */
-                    conflictingStorageNode = this.storageTreeExecute().recoverStorageNode(storageTaskCurrentAction.getTargetStorageNode().getOnDiskName(), storageTaskCurrentAction.getTargetStorageNode().getParent());
-                    conflictingStorageNode = this.storageTreeExecute().publishStorageNode(conflictingStorageNode);
-                    storageTaskCurrentAction.setConflictStorageNode(conflictingStorageNode);
-                } catch (FilePublishingRaceException publishingException) {
-                    /* Most likely a race condition. As I have no ideas yet as to how to handle them... */
-                    storageTaskCurrentAction.setExceptionType(publishingException.getClass().getSimpleName());
-                    storageTaskCurrentAction.setExceptionMessage(publishingException.getMessage());
-                    storageTaskCurrentAction.setConflictStorageNode(null);
-                    continue;
+                try { /* Here we attempt to find the conflicting node and recover it */
+                    storageTaskCurrentAction.setConflictStorageNode(this.storageTreeExecute().recoverStorageNode(storageTaskCurrentAction.getTargetStorageNode().getOnDiskName(), storageTaskCurrentAction.getTargetStorageNode().getParent()));
                 } catch (Exception recoveryException) {
                     /* Wild territories... conflict without a conflicting node? Gonna be fun!!! */
                     storageTaskCurrentAction.setExceptionType(recoveryException.getClass().getSimpleName());
