@@ -2,42 +2,74 @@ package com.unulearner.backend.storage.services;
 
 import com.unulearner.backend.storage.entities.StorageNode;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.Arrays;
 import java.util.Map;
 import java.util.Set;
 
 public class ExceptionHandler {
-    private Map<String, OnExceptionOption> exceptionOptions;
+    private ArrayList<OnExceptionOption> exceptionOptions;
     private final Map<String, OnExceptionActon> OEAMap;
 
     public ExceptionHandler() {
         this.OEAMap = new HashMap<>();
     }
 
-    /* TODO: basically everything down there */
+    /* An option with the parameters it could possibly require for the resolution of the exception it is supposed to resolve */
     public static class OnExceptionOption {
+        private final String option;
         private final String displayText;
-        private final Map<String, String> parameters;
+        private final ArrayList<Parameter> parameters;
 
-        public OnExceptionOption(String displayText, Map<String, String> params) {
-            this.parameters = params;
+        public OnExceptionOption(String option, String displayText, Parameter... params) {
+            this.option = option;
             this.displayText = displayText;
+            this.parameters = new ArrayList<>(Arrays.asList(params));
+        }
+
+        public String getOption() {
+            return this.option;
         }
 
         public String getDisplayText() {
             return this.displayText;
         }
 
-        public Map<String, String> getParameters() {
+        public ArrayList<Parameter> getParameters() {
             return this.parameters;
+        }
+
+        public static class Parameter {
+            private final String parameter;
+            private final String displayText;
+            private final String parameterType;
+
+            public Parameter(String parameter, String displayText, String parameterType) {
+                this.parameter = parameter;
+                this.displayText = displayText;
+                this.parameterType = parameterType;
+            }
+
+            public String getParameter() {
+                return this.parameter;
+            }
+
+            public String getDisplayText() {
+                return this.displayText;
+            }
+
+            public String getParameterType() {
+                return this.parameterType;
+            } 
         }
     }
 
-    public Map<String, OnExceptionOption> getExceptionOptions() {
+    public ArrayList<OnExceptionOption> getExceptionOptions() {
         return this.exceptionOptions;
     }
 
-    public void setExceptionOptions(Map<String, OnExceptionOption> exceptionOptions) {
+    public void setExceptionOptions(ArrayList<OnExceptionOption> exceptionOptions) {
         this.exceptionOptions = exceptionOptions;
     }
 

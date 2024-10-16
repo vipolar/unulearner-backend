@@ -29,7 +29,10 @@ import org.springframework.stereotype.Service;
 import com.unulearner.backend.storage.exceptions.FileToParentRelationsException;
 import com.unulearner.backend.storage.exceptions.FileTypeNotSupportedException;
 import com.unulearner.backend.storage.exceptions.FileIsInaccessibleException;
+import com.unulearner.backend.storage.exceptions.FilePublishingRaceException;
 import com.unulearner.backend.storage.exceptions.StorageServiceException;
+
+import java.nio.file.DirectoryNotEmptyException;
 import java.nio.file.FileAlreadyExistsException;
 import java.security.InvalidParameterException;
 import java.io.IOException;
@@ -100,7 +103,7 @@ public class StorageTree {
                         }
                         
                         if (parentStorageNode != null) { /* null parent is only allowed in the case of the root node. No other node will go past the pre-commit check with its parent set to null */
-                            final Comparator<StorageNode> storageNodeComparator = Comparator.comparing((StorageNode iNode) -> iNode.isDirectory() ? 0 : 1).thenComparing(StorageNode::getOnDiskName);
+                            final Comparator<StorageNode> storageNodeComparator = Comparator.comparing(StorageNode::getOnDiskName); //((StorageNode iNode) -> iNode.isDirectory() ? 0 : 1).thenComparing(StorageNode::getOnDiskName);
                             final Integer iNode = Collections.binarySearch(parentStorageNode.getChildren(), targetStorageNode, storageNodeComparator);
                             if (iNode >= 0) {
                                 parentStorageNode.getChildren().set(iNode, targetStorageNode);
@@ -148,7 +151,7 @@ public class StorageTree {
                             targetStorageNode = storageRepository.save(new StorageNode(parentStorageNode, null, fileNodePath, storageTreeProperties.getRecoveredFileDescription()));
                         }           
                         
-                        final Comparator<StorageNode> storageNodeComparator = Comparator.comparing((StorageNode iNode) -> iNode.isDirectory() ? 0 : 1).thenComparing(StorageNode::getOnDiskName);
+                        final Comparator<StorageNode> storageNodeComparator = Comparator.comparing(StorageNode::getOnDiskName); //((StorageNode iNode) -> iNode.isDirectory() ? 0 : 1).thenComparing(StorageNode::getOnDiskName);
                         final Integer iNode = Collections.binarySearch(parentStorageNode.getChildren(), targetStorageNode, storageNodeComparator);
                         if (iNode >= 0) {
                             parentStorageNode.getChildren().set(iNode, targetStorageNode);
@@ -253,16 +256,17 @@ public class StorageTree {
         /* If search by ID turns up with anything then this is an update job */
         for (int iNode = 0; iNode < parentStorageNode.getChildren().size(); iNode++) {
             if (parentStorageNode.getChildren().get(iNode).getId().equals(savedStorageNode.getId())) {
-                parentStorageNode.getChildren().remove(iNode); /* Remove and replace later */
+                parentStorageNode.getChildren().remove(iNode); /* Remove now and replace later */
             }
         }
 
         /* If search by name turns up with anything then we have a big problem */
         final Comparator<StorageNode> storageNodeComparator = Comparator.comparing((StorageNode node) -> node.isDirectory() ? 0 : 1).thenComparing(StorageNode::getOnDiskName);
         final Integer iNode = Collections.binarySearch(parentStorageNode.getChildren(), savedStorageNode, storageNodeComparator);
-        if (iNode >= 0) { /* If ID matches then update is permissible... although it should never come to this... */
+        if (iNode >= 0) { /* If the ID matches then update is permissible... although it should never come to this. */
             if (!savedStorageNode.getId().equals(parentStorageNode.getChildren().get(iNode).getId())) {
-                throw new FileAlreadyExistsException("WHAT THE FUCK?!!!".formatted()); /* TODO: ??? */
+                /* If the ID doesn't match then we have a race condition. */
+                throw new FilePublishingRaceException("It's a race!".formatted());
             }
 
             parentStorageNode.getChildren().set(iNode, savedStorageNode);
@@ -303,16 +307,15 @@ public class StorageTree {
                 return destinationStorageNode.getChildren().get(iNode);
             }
         }
-        
-        /* If node is not there... */
-        final StorageNode newStorageNode;
+
+        final StorageNode newStorageNode; /* If node is not there but the file supposedly is... */
         final NodePath targetPath = destinationStorageNode.getNodePath().resolve(targetNodeName);
         if (targetPath.isValidDirectory()) {
             newStorageNode = new StorageNode(destinationStorageNode, new ArrayList<>(), targetPath, this.storageTreeProperties.getRecoveredDirectoryDescription());
         } else if (targetPath.isValidFile()) {
             newStorageNode = new StorageNode(destinationStorageNode, null, targetPath, this.storageTreeProperties.getRecoveredFileDescription());
         } else if (targetPath.isValidNode()) {
-            throw new FileTypeNotSupportedException("Node '%s' is of an unsupported file type.".formatted(targetPath.getPath().toString()));
+            throw new FileTypeNotSupportedException("Node '%s' is of unsupported file type.".formatted(targetPath.getPath().toString()));
         } else {
             throw new FileIsInaccessibleException("Node '%s' is inaccessible or nonexistent".formatted(targetPath.getPath().toString()));
         }

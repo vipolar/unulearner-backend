@@ -1,5 +1,6 @@
 package com.unulearner.backend.storage.responses;
 
+import java.util.ArrayList;
 import java.util.UUID;
 import java.util.Map;
 
@@ -10,7 +11,7 @@ public class StorageServiceResponse {
     private final UUID taskID;
     private final String taskState;
     private final StorageTaskAction action;
-    private final Map<String, OnExceptionOption> options;
+    private final ArrayList<OnExceptionOption> options;
 
     public UUID getTaskID() {
         return this.taskID;
@@ -24,11 +25,11 @@ public class StorageServiceResponse {
         return this.action;
     }
 
-    public Map<String, OnExceptionOption> getOptions() {
+    public ArrayList<OnExceptionOption> getOptions() {
         return this.options;
     }
 
-    public StorageServiceResponse(UUID taskID, String state, StorageTaskAction taskAction, Map<String, OnExceptionOption> taskOptions) {
+    public StorageServiceResponse(UUID taskID, String state, StorageTaskAction taskAction, ArrayList<OnExceptionOption> taskOptions) {
         this.taskID = taskID;
         this.taskState = state;
         this.action = taskAction;
