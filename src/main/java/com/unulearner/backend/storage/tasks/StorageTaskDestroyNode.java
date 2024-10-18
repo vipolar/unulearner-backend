@@ -1,7 +1,6 @@
 package com.unulearner.backend.storage.tasks;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Map;
 
 import com.unulearner.backend.storage.data.StorageTree;
@@ -54,7 +53,6 @@ public class StorageTaskDestroyNode extends StorageTaskBaseBatch {
             this.getTaskExceptionHandler().setOnExceptionAction(storageTaskCurrentAction.getTargetStorageNode(), storageTaskCurrentAction.getExceptionType(), onExceptionAction, onExceptionActionIsPersistent);
         }
 
-        Integer IOAttempts = 0;
         storageTaskCurrentAction.incrementAttemptCounter();
         while (storageTaskCurrentAction.getTargetStorageNode().getId() != null) {
             try {
@@ -71,12 +69,11 @@ public class StorageTaskDestroyNode extends StorageTaskBaseBatch {
                                     this.advanceStorageTask();
                                     return;
                                 default:
-                                    final ArrayList<OnExceptionOption> onExceptionOptions = new ArrayList<>(Arrays.asList(
-                                        new OnExceptionOption("skip", "Skip %s".formatted(storageTaskCurrentAction.getTargetStorageNode().isDirectory() ? "directory" : "file"),
-                                            new Parameter("setAsDefault", "Set as Default".formatted(), "boolean")
-                                        )
+                                    final ArrayList<OnExceptionOption> onExceptionOptions = new ArrayList<>();
+                                    onExceptionOptions.add(new OnExceptionOption("skip", "Skip %s".formatted(storageTaskCurrentAction.getTargetStorageNode().isDirectory() ? "directory" : "file"),
+                                        new Parameter("setAsDefault", "Set as Default".formatted(), "boolean")
                                     ));
-        
+
                                     storageTaskCurrentAction.setMessage("%s '%s' could not be removed due to a persistent I/O exception occurring".formatted(storageTaskCurrentAction.getTargetStorageNode().isDirectory() ? "Directory" : "File", storageTaskCurrentAction.getTargetStorageNode().getOnDiskURL()));
                                     this.getTaskExceptionHandler().setExceptionOptions(onExceptionOptions);
                                     this.setCurrentState(TaskState.EXCEPTION);
@@ -90,10 +87,9 @@ public class StorageTaskDestroyNode extends StorageTaskBaseBatch {
                                     this.advanceStorageTask();
                                     return;
                                 default:
-                                    final ArrayList<OnExceptionOption> onExceptionOptions = new ArrayList<>(Arrays.asList(
-                                        new OnExceptionOption("skip", "Skip %s".formatted(storageTaskCurrentAction.getTargetStorageNode().isDirectory() ? "directory" : "file"),
-                                            new Parameter("setAsDefault", "Set as Default".formatted(), "boolean")
-                                        )
+                                    final ArrayList<OnExceptionOption> onExceptionOptions = new ArrayList<>();
+                                    onExceptionOptions.add(new OnExceptionOption("skip", "Skip %s".formatted(storageTaskCurrentAction.getTargetStorageNode().isDirectory() ? "directory" : "file"),
+                                        new Parameter("setAsDefault", "Set as Default".formatted(), "boolean")
                                     ));
 
                                     storageTaskCurrentAction.setMessage("%s '%s' could not be removed due to an unexpected exception occurring".formatted(storageTaskCurrentAction.getTargetStorageNode().isDirectory() ? "Directory" : "File", storageTaskCurrentAction.getTargetStorageNode().getOnDiskURL()));
@@ -117,16 +113,6 @@ public class StorageTaskDestroyNode extends StorageTaskBaseBatch {
                 this.advanceStorageTask();
                 return;
             } catch (IOException exception) {
-                if (IOAttempts++ < 3) {
-                    try {
-                        Thread.sleep(1000);
-                    } catch (InterruptedException sleepException) {
-                        storageTaskCurrentAction.setExceptionType(sleepException.getClass().getSimpleName());
-                        storageTaskCurrentAction.setExceptionMessage(exception.getMessage());
-                        continue;
-                    }
-                }
-
                 storageTaskCurrentAction.setExceptionType(exception.getClass().getSimpleName());
                 storageTaskCurrentAction.setExceptionMessage(exception.getMessage());
             } catch (Exception exception) {

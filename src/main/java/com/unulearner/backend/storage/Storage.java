@@ -10,6 +10,7 @@ import org.springframework.core.io.UrlResource;
 import org.springframework.context.annotation.Scope;
 import org.springframework.web.multipart.MultipartFile;
 
+import com.unulearner.backend.security.user.JWTCredentials;
 import com.unulearner.backend.storage.data.StorageTree;
 import com.unulearner.backend.storage.entities.StorageNode;
 import com.unulearner.backend.storage.tasks.StorageTaskBase;
@@ -29,10 +30,12 @@ import org.springframework.beans.factory.config.ConfigurableBeanFactory;
 public class Storage {
     final private StorageTree storageTree;
     final private StorageTasksMap storageTasksMap;
+    final private JWTCredentials userJWTCredentials;
 
-    private Storage(StorageTree storageTree, StorageTasksMap storageTasksMap) {
+    private Storage(StorageTree storageTree, StorageTasksMap storageTasksMap, JWTCredentials userJWTCredentials) {
         this.storageTree = storageTree;
         this.storageTasksMap = storageTasksMap;
+        this.userJWTCredentials = userJWTCredentials;
     }
 
     //**********************************************************//
@@ -136,6 +139,8 @@ public class Storage {
         if (destinationStorageNode == null || !destinationStorageNode.isDirectory()) {
             throw new StorageServiceException("Destination directory ID '%s' is invalid!".formatted(destinationDirectoryID.toString()));
         }
+
+        this.userJWTCredentials.hasWritePermission();
 
         try {
             final StorageTaskCreateNode storageTask = new StorageTaskCreateNode(this.storageTree, directoryName, directoryDescription, destinationStorageNode, this.storageTasksMap);

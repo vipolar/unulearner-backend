@@ -1,7 +1,6 @@
 package com.unulearner.backend.storage.tasks;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Map;
 
 import com.unulearner.backend.storage.data.StorageTree;
@@ -58,7 +57,6 @@ public class StorageTaskUpdateNode extends StorageTaskBaseBatch {
             this.getTaskExceptionHandler().setOnExceptionAction(storageTaskCurrentAction.getTargetStorageNode(), storageTaskCurrentAction.getExceptionType(), onExceptionAction, onExceptionActionIsPersistent);
         }
 
-        Integer IOAttempts = 0;
         storageTaskCurrentAction.incrementAttemptCounter();
         while (storageTaskCurrentAction.getNewStorageNode().getId() == null) {
             try {
@@ -67,11 +65,7 @@ public class StorageTaskUpdateNode extends StorageTaskBaseBatch {
 
                 if (exceptionType != null) {
                     switch (exceptionType) {
-                        case "FileAlreadyExistsException": /* TODO: add option to publish the conflicting node if it isn't published */
-                            if (storageTaskCurrentAction.getConflictStorageNode() == null) {
-                                throw new RuntimeException("%s '%s' could not be updated due to a supposed conflicting node, existence of which can neither be confirmed nor denied...".formatted(storageTaskCurrentAction.getTargetStorageNode().isDirectory() ? "Directory" : "File", storageTaskCurrentAction.getTargetStorageNode().getOnDiskURL()));
-                            }
-
+                        case "FileAlreadyExistsException":
                             switch (exceptionAction) {
                                 case "rename":
                                     /* Set a new, manually entered name to be used in the ensuing transfer attempt */
@@ -84,14 +78,13 @@ public class StorageTaskUpdateNode extends StorageTaskBaseBatch {
                                     this.advanceStorageTask();
                                     return;
                                 default:
-                                    final ArrayList<OnExceptionOption> onExceptionOptions = new ArrayList<>(Arrays.asList(
-                                        new OnExceptionOption("rename", "Rename manually".formatted(),
-                                            new Parameter("updatedName", "Updated Name".formatted(), "string"),
-                                            new Parameter("setAsDefault", "Set as Default".formatted(), "boolean")
-                                        ),
-                                        new OnExceptionOption("skip", "Skip %s".formatted(storageTaskCurrentAction.getTargetStorageNode().isDirectory() ? "directory" : "file"),
-                                            new Parameter("setAsDefault", "Set as Default".formatted(), "boolean")
-                                        )
+                                    final ArrayList<OnExceptionOption> onExceptionOptions = new ArrayList<>();
+                                    onExceptionOptions.add(new OnExceptionOption("rename", "Rename manually".formatted(),
+                                        new Parameter("updatedName", "Updated Name".formatted(), "string"),
+                                        new Parameter("setAsDefault", "Set as Default".formatted(), "boolean")
+                                    ));
+                                    onExceptionOptions.add(new OnExceptionOption("skip", "Skip %s".formatted(storageTaskCurrentAction.getTargetStorageNode().isDirectory() ? "directory" : "file"),
+                                        new Parameter("setAsDefault", "Set as Default".formatted(), "boolean")
                                     ));
 
                                     storageTaskCurrentAction.setMessage("%s '%s' could not be updated due to a conflicting node already in place.".formatted(storageTaskCurrentAction.getTargetStorageNode().isDirectory() ? "Directory" : "File", storageTaskCurrentAction.getTargetStorageNode().getOnDiskURL()));
@@ -112,17 +105,16 @@ public class StorageTaskUpdateNode extends StorageTaskBaseBatch {
                                     this.advanceStorageTask();
                                     return;
                                 default:
-                                    final ArrayList<OnExceptionOption> onExceptionOptions = new ArrayList<>(Arrays.asList(
-                                        new OnExceptionOption("rename", "Rename manually".formatted(),
-                                            new Parameter("updatedName", "Updated Name".formatted(), "string"),
-                                            new Parameter("setAsDefault", "Set as Default".formatted(), "boolean")
-                                        ),
-                                        new OnExceptionOption("skip", "Skip %s".formatted(storageTaskCurrentAction.getTargetStorageNode().isDirectory() ? "directory" : "file"),
-                                            new Parameter("setAsDefault", "Set as Default".formatted(), "boolean")
-                                        )
+                                    final ArrayList<OnExceptionOption> onExceptionOptions = new ArrayList<>();
+                                    onExceptionOptions.add(new OnExceptionOption("rename", "Rename manually".formatted(),
+                                        new Parameter("updatedName", "Updated Name".formatted(), "string"),
+                                        new Parameter("setAsDefault", "Set as Default".formatted(), "boolean")
+                                    ));
+                                    onExceptionOptions.add(new OnExceptionOption("skip", "Skip %s".formatted(storageTaskCurrentAction.getTargetStorageNode().isDirectory() ? "directory" : "file"),
+                                        new Parameter("setAsDefault", "Set as Default".formatted(), "boolean")
                                     ));
 
-                                    storageTaskCurrentAction.setMessage("%s '%s' could not be updated due to a provided file name being incompatible.".formatted(storageTaskCurrentAction.getTargetStorageNode().isDirectory() ? "Directory" : "File", storageTaskCurrentAction.getTargetStorageNode().getOnDiskURL()));
+                                    storageTaskCurrentAction.setMessage("%s '%s' could not be updated due to the provided %s name being invalid.".formatted(storageTaskCurrentAction.getTargetStorageNode().isDirectory() ? "Directory" : "File", storageTaskCurrentAction.getTargetStorageNode().getOnDiskURL(), storageTaskCurrentAction.getTargetStorageNode().isDirectory() ? "directory" : "file"));
                                     this.getTaskExceptionHandler().setExceptionOptions(onExceptionOptions);
                                     this.setCurrentState(TaskState.EXCEPTION);
                                     return;
@@ -135,12 +127,11 @@ public class StorageTaskUpdateNode extends StorageTaskBaseBatch {
                                     this.advanceStorageTask();
                                     return;
                                 default:
-                                    final ArrayList<OnExceptionOption> onExceptionOptions = new ArrayList<>(Arrays.asList(
-                                        new OnExceptionOption("skip", "Skip %s".formatted(storageTaskCurrentAction.getTargetStorageNode().isDirectory() ? "directory" : "file"),
-                                            new Parameter("setAsDefault", "Set as Default".formatted(), "boolean")
-                                        )
+                                    final ArrayList<OnExceptionOption> onExceptionOptions = new ArrayList<>();
+                                    onExceptionOptions.add(new OnExceptionOption("skip", "Skip %s".formatted(storageTaskCurrentAction.getTargetStorageNode().isDirectory() ? "directory" : "file"),
+                                        new Parameter("setAsDefault", "Set as Default".formatted(), "boolean")
                                     ));
-        
+
                                     storageTaskCurrentAction.setMessage("%s '%s' could not be updated due to a persistent I/O exception occurring".formatted(storageTaskCurrentAction.getTargetStorageNode().isDirectory() ? "Directory" : "File", storageTaskCurrentAction.getTargetStorageNode().getOnDiskURL()));
                                     this.getTaskExceptionHandler().setExceptionOptions(onExceptionOptions);
                                     this.setCurrentState(TaskState.EXCEPTION);
@@ -154,12 +145,11 @@ public class StorageTaskUpdateNode extends StorageTaskBaseBatch {
                                     this.advanceStorageTask();
                                     return;
                                 default:
-                                    final ArrayList<OnExceptionOption> onExceptionOptions = new ArrayList<>(Arrays.asList(
-                                        new OnExceptionOption("skip", "Skip %s".formatted(storageTaskCurrentAction.getTargetStorageNode().isDirectory() ? "directory" : "file"),
-                                            new Parameter("setAsDefault", "Set as Default".formatted(), "boolean")
-                                        )
+                                    final ArrayList<OnExceptionOption> onExceptionOptions = new ArrayList<>();
+                                    onExceptionOptions.add(new OnExceptionOption("skip", "Skip %s".formatted(storageTaskCurrentAction.getTargetStorageNode().isDirectory() ? "directory" : "file"),
+                                        new Parameter("setAsDefault", "Set as Default".formatted(), "boolean")
                                     ));
-    
+
                                     storageTaskCurrentAction.setMessage("%s '%s' could not be updated due to an unexpected exception occurring".formatted(storageTaskCurrentAction.getTargetStorageNode().isDirectory() ? "Directory" : "File", storageTaskCurrentAction.getTargetStorageNode().getOnDiskURL()));
                                     this.getTaskExceptionHandler().setExceptionOptions(onExceptionOptions);
                                     this.setCurrentState(TaskState.EXCEPTION);
@@ -190,10 +180,8 @@ public class StorageTaskUpdateNode extends StorageTaskBaseBatch {
                     storageTaskCurrentAction.setConflictStorageNode(this.storageTreeExecute().recoverStorageNode(storageTaskCurrentAction.getTargetStorageNode().getOnDiskName(), storageTaskCurrentAction.getTargetStorageNode().getParent()));
                 } catch (Exception recoveryException) {
                     /* Wild territories... conflict without a conflicting node? Gonna be fun!!! */
-                    storageTaskCurrentAction.setExceptionType(recoveryException.getClass().getSimpleName());
-                    storageTaskCurrentAction.setExceptionMessage(recoveryException.getMessage());
                     storageTaskCurrentAction.setConflictStorageNode(null);
-                    continue;
+                    /* TODO: Simply log this stuff for later and move on... */
                 }
 
                 storageTaskCurrentAction.setExceptionType(exception.getClass().getSimpleName());
@@ -202,16 +190,6 @@ public class StorageTaskUpdateNode extends StorageTaskBaseBatch {
                 storageTaskCurrentAction.setExceptionType(exception.getClass().getSimpleName());
                 storageTaskCurrentAction.setExceptionMessage(exception.getMessage());
             } catch (IOException exception) {
-                if (IOAttempts++ < 3) {
-                    try {
-                        Thread.sleep(1000);
-                    } catch (InterruptedException sleepException) {
-                        storageTaskCurrentAction.setExceptionType(sleepException.getClass().getSimpleName());
-                        storageTaskCurrentAction.setExceptionMessage(exception.getMessage());
-                        continue;
-                    }
-                }
-
                 storageTaskCurrentAction.setExceptionType(exception.getClass().getSimpleName());
                 storageTaskCurrentAction.setExceptionMessage(exception.getMessage());
             } catch (Exception exception) {
@@ -253,7 +231,7 @@ public class StorageTaskUpdateNode extends StorageTaskBaseBatch {
 
         protected StorageTaskUpdateNodeCurrentAction(StorageTaskUpdateNodeCurrentAction parentStorageTaskAction, String targetName, StorageNode targetStorageNode) {
             super(parentStorageTaskAction);
-            
+
             this.targetStorageNode = targetStorageNode;
 
             this.newStorageNode = new StorageNode(targetStorageNode.getParent(), targetStorageNode.getChildren(), null, targetStorageNode.getDescription());
