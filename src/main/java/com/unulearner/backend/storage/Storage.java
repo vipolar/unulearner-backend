@@ -1,5 +1,6 @@
 package com.unulearner.backend.storage;
 
+import java.io.File;
 import java.net.URI;
 import java.util.Map;
 import java.util.UUID;
@@ -8,12 +9,12 @@ import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Service;
 import org.springframework.core.io.UrlResource;
 import org.springframework.context.annotation.Scope;
-import org.springframework.web.multipart.MultipartFile;
 
-import com.unulearner.backend.security.user.JWTCredentials;
 import com.unulearner.backend.storage.data.StorageTree;
 import com.unulearner.backend.storage.entities.StorageNode;
 import com.unulearner.backend.storage.tasks.StorageTaskBase;
+import com.unulearner.backend.storage.tasks.StorageTaskChmodNode;
+import com.unulearner.backend.storage.tasks.StorageTaskChownNode;
 import com.unulearner.backend.storage.tasks.StorageTaskCreateNode;
 import com.unulearner.backend.storage.tasks.StorageTaskUpdateNode;
 import com.unulearner.backend.storage.tasks.StorageTaskDestroyNode;
@@ -30,12 +31,10 @@ import org.springframework.beans.factory.config.ConfigurableBeanFactory;
 public class Storage {
     final private StorageTree storageTree;
     final private StorageTasksMap storageTasksMap;
-    final private JWTCredentials userJWTCredentials;
 
-    private Storage(StorageTree storageTree, StorageTasksMap storageTasksMap, JWTCredentials userJWTCredentials) {
+    private Storage(StorageTree storageTree, StorageTasksMap storageTasksMap) {
         this.storageTree = storageTree;
         this.storageTasksMap = storageTasksMap;
-        this.userJWTCredentials = userJWTCredentials;
     }
 
     //**********************************************************//
@@ -44,35 +43,81 @@ public class Storage {
     //*                                                        *//
     //**********************************************************//
 
-    public StorageServiceResponse createFileStorageNode(MultipartFile newFile, String fileDescription, UUID destinationDirectoryID) throws Exception {
+    public StorageServiceResponse createFileStorageNode(File newFile, StorageNode newStorageNode, UUID destinationDirectoryID) throws Exception {
         final StorageNode destinationStorageNode = this.storageTree.retrieveStorageNode(destinationDirectoryID);
         if (destinationStorageNode == null || !destinationStorageNode.isDirectory()) {
             throw new StorageServiceException("Destination directory ID '%s' is invalid!".formatted(destinationDirectoryID.toString()));
         }
 
         try {
-            final StorageTaskCreateNode storageTask = new StorageTaskCreateNode(this.storageTree, newFile, fileDescription, destinationStorageNode, this.storageTasksMap);
+            final StorageTaskCreateNode storageTask = new StorageTaskCreateNode(this.storageTree, newFile, newStorageNode.setParent(destinationStorageNode), this.storageTasksMap);
             return storageTask.getStorageServiceResponse();
         } catch (Exception exception) {
             throw new StorageServiceException("File upload task initialization failed: %s".formatted(exception.getMessage()), exception);
         }
     }
 
-    public StorageServiceResponse updateFileStorageNode(UUID targetFileID, String updatedName, String updatedDescription) throws Exception {
-        final StorageNode targetStorageNode = this.storageTree.retrieveStorageNode(targetFileID);
+    public StorageServiceResponse updateFileStorageNode(StorageNode updatedStorageNode) throws Exception {
+        final StorageNode targetStorageNode = this.storageTree.retrieveStorageNode(updatedStorageNode.getId());
         if (targetStorageNode == null || targetStorageNode.isDirectory()) {
-            throw new StorageServiceException("Target file ID '%s' is invalid!".formatted(targetFileID.toString()));
+            throw new StorageServiceException("Target file ID '%s' is invalid!".formatted(updatedStorageNode.getId().toString()));
         }
 
         try {
-            final StorageTaskUpdateNode storageTask = new StorageTaskUpdateNode(this.storageTree, updatedName, targetStorageNode, this.storageTasksMap);
+            final StorageTaskUpdateNode storageTask = new StorageTaskUpdateNode(this.storageTree, updatedStorageNode, this.storageTasksMap);
             return storageTask.getStorageServiceResponse();
         } catch (Exception exception) {
             throw new StorageServiceException("File update task initialization failed: %s".formatted(exception.getMessage()), exception);
         }
     }
 
-    public StorageServiceResponse transferFileStorageNode(UUID targetFileID, UUID destinationDirectoryID, Boolean persistOriginal) throws Exception {
+    public StorageServiceResponse chmodFileStorageNode(UUID targetFileID, Short flags, Boolean isRecursive) throws Exception {
+        final StorageNode targetStorageNode = this.storageTree.retrieveStorageNode(targetFileID);
+        if (targetStorageNode == null || targetStorageNode.isDirectory()) {
+            throw new StorageServiceException("Target file ID '%s' is invalid!".formatted(targetFileID));
+        }
+
+        try {
+            final StorageTaskChmodNode storageTask = new StorageTaskChmodNode(this.storageTree, targetStorageNode, flags, isRecursive, this.storageTasksMap);
+            return storageTask.getStorageServiceResponse();
+        } catch (Exception exception) {
+            throw new StorageServiceException("File permission flags update task initialization failed: %s".formatted(exception.getMessage()), exception);
+        }
+    }
+
+    public StorageServiceResponse chownFileStorageNode(UUID targetFileID, UUID user, UUID group, Boolean isRecursive) throws Exception {
+        final StorageNode targetStorageNode = this.storageTree.retrieveStorageNode(targetFileID);
+        if (targetStorageNode == null || targetStorageNode.isDirectory()) {
+            throw new StorageServiceException("Target file ID '%s' is invalid!".formatted(targetFileID));
+        }
+
+        try {
+            final StorageTaskChownNode storageTask = new StorageTaskChownNode(this.storageTree, targetStorageNode, user, group, isRecursive, this.storageTasksMap);
+            return storageTask.getStorageServiceResponse();
+        } catch (Exception exception) {
+            throw new StorageServiceException("File ownership change task initialization failed: %s".formatted(exception.getMessage()), exception);
+        }
+    }
+
+    public StorageServiceResponse renameFileStorageNode(UUID targetFileID, String newfileName) throws Exception {
+        final StorageNode targetStorageNode = this.storageTree.retrieveStorageNode(targetFileID);
+        if (targetStorageNode == null || targetStorageNode.isDirectory()) {
+            throw new StorageServiceException("Target file ID '%s' is invalid!".formatted(targetFileID));
+        }
+
+        if (newfileName == null || newfileName.isEmpty() || newfileName.isBlank()) {
+            throw new StorageServiceException("New file name cannot be blank!".formatted());
+        }
+
+        try {
+            final StorageTaskTransferNode storageTask = new StorageTaskTransferNode(this.storageTree, targetStorageNode, newfileName, this.storageTasksMap);
+            return storageTask.getStorageServiceResponse();
+        } catch (Exception exception) {
+            throw new StorageServiceException("File remane task initialization failed: %s".formatted(exception.getMessage()), exception);
+        }
+    }
+
+    public StorageServiceResponse transferFileStorageNode(UUID targetFileID, UUID destinationDirectoryID, String newDirectoryName, Boolean persistOriginal) throws Exception {
         final StorageNode targetStorageNode = this.storageTree.retrieveStorageNode(targetFileID);
         if (targetStorageNode == null || targetStorageNode.isDirectory()) {
             throw new StorageServiceException("Target file ID '%s' is invalid!".formatted(targetFileID.toString()));
@@ -84,7 +129,7 @@ public class Storage {
         }
 
         try {
-            final StorageTaskTransferNode storageTask = new StorageTaskTransferNode(this.storageTree, targetStorageNode, destinationStorageNode, persistOriginal, this.storageTasksMap);
+            final StorageTaskTransferNode storageTask = new StorageTaskTransferNode(this.storageTree, targetStorageNode, destinationStorageNode, newDirectoryName, persistOriginal, this.storageTasksMap);
             return storageTask.getStorageServiceResponse();
         } catch (Exception exception) {
             throw new StorageServiceException("File %s task initialization failed: %s".formatted(persistOriginal ? "copy" : "move", exception.getMessage()), exception);
@@ -114,17 +159,17 @@ public class Storage {
         try {
             final URI targetURI = targetStorageNode.getNodePath().getPath().toUri();
             if (targetURI == null) {
-                throw new StorageServiceException("File '%s' could not be reached!".formatted(targetStorageNode.getOnDiskName()));
+                throw new StorageServiceException("File '%s' could not be reached!".formatted(targetStorageNode.getName()));
             }
 
             final Resource targetResource = new UrlResource(targetURI);
             if (targetResource == null || !targetResource.isReadable()) {
-                throw new StorageServiceException("File '%s' could not be read!".formatted(targetStorageNode.getOnDiskName()));
+                throw new StorageServiceException("File '%s' could not be read!".formatted(targetStorageNode.getName()));
             }
 
             return targetResource;
         } catch (Exception retrieveResourceFromStorageException) {
-            throw new StorageServiceException("Failed to retrieve '%s' input stream from permanent storage!".formatted(targetStorageNode.getOnDiskName(), retrieveResourceFromStorageException));
+            throw new StorageServiceException("Failed to retrieve '%s' input stream from permanent storage!".formatted(targetStorageNode.getName(), retrieveResourceFromStorageException));
         }
     }
 
@@ -134,37 +179,81 @@ public class Storage {
     //*                                                       *//
     //*********************************************************//
 
-    public StorageServiceResponse createDirectoryStorageNode(String directoryName, String directoryDescription, UUID destinationDirectoryID) throws Exception {
+    public StorageServiceResponse createDirectoryStorageNode(StorageNode newStorageNode, UUID destinationDirectoryID) throws Exception {
         final StorageNode destinationStorageNode = this.storageTree.retrieveStorageNode(destinationDirectoryID);
         if (destinationStorageNode == null || !destinationStorageNode.isDirectory()) {
             throw new StorageServiceException("Destination directory ID '%s' is invalid!".formatted(destinationDirectoryID.toString()));
         }
 
-        this.userJWTCredentials.hasWritePermission();
-
         try {
-            final StorageTaskCreateNode storageTask = new StorageTaskCreateNode(this.storageTree, directoryName, directoryDescription, destinationStorageNode, this.storageTasksMap);
+            final StorageTaskCreateNode storageTask = new StorageTaskCreateNode(this.storageTree, newStorageNode.setParent(destinationStorageNode), this.storageTasksMap);
             return storageTask.getStorageServiceResponse();
         } catch (Exception exception) {
             throw new StorageServiceException("Directory creation task initialization failed: %s".formatted(exception.getMessage()), exception);
         }
     }
 
-    public StorageServiceResponse updateDirectoryStorageNode(UUID targetDirectoryID, String updatedName, String updatedDescription) throws Exception {
-        final StorageNode targetStorageNode = this.storageTree.retrieveStorageNode(targetDirectoryID);
+    public StorageServiceResponse updateDirectoryStorageNode(StorageNode updatedStorageNode) throws Exception {
+        final StorageNode targetStorageNode = this.storageTree.retrieveStorageNode(updatedStorageNode.getId());
         if (targetStorageNode == null || !targetStorageNode.isDirectory()) {
-            throw new StorageServiceException("Target directory ID '%s' is invalid!".formatted(targetDirectoryID.toString()));
+            throw new StorageServiceException("Target directory ID '%s' is invalid!".formatted(updatedStorageNode.toString()));
         }
 
         try {
-            final StorageTaskUpdateNode storageTask = new StorageTaskUpdateNode(this.storageTree, updatedName, targetStorageNode, this.storageTasksMap);
+            final StorageTaskUpdateNode storageTask = new StorageTaskUpdateNode(this.storageTree, updatedStorageNode, this.storageTasksMap);
             return storageTask.getStorageServiceResponse();
         } catch (Exception exception) {
             throw new StorageServiceException("Directory update task initialization failed: %s".formatted(exception.getMessage()), exception);
         }
     }
 
-    public StorageServiceResponse transferDirectoryStorageNode(UUID targetDirectoryID, UUID destinationDirectoryID, Boolean persistOriginal) throws Exception {
+    public StorageServiceResponse chmodDirectoryStorageNode(UUID targetDirectoryID, Short flags, Boolean isRecursive) throws Exception {
+        final StorageNode targetStorageNode = this.storageTree.retrieveStorageNode(targetDirectoryID);
+        if (targetStorageNode == null || !targetStorageNode.isDirectory()) {
+            throw new StorageServiceException("Target directory ID '%s' is invalid!".formatted(targetDirectoryID));
+        }
+
+        try {
+            final StorageTaskChmodNode storageTask = new StorageTaskChmodNode(this.storageTree, targetStorageNode, flags, isRecursive, this.storageTasksMap);
+            return storageTask.getStorageServiceResponse();
+        } catch (Exception exception) {
+            throw new StorageServiceException("Directory permission flags update task initialization failed: %s".formatted(exception.getMessage()), exception);
+        }
+    }
+
+    public StorageServiceResponse chownDirectoryStorageNode(UUID targetDirectoryID, UUID user, UUID group, Boolean isRecursive) throws Exception {
+        final StorageNode targetStorageNode = this.storageTree.retrieveStorageNode(targetDirectoryID);
+        if (targetStorageNode == null || !targetStorageNode.isDirectory()) {
+            throw new StorageServiceException("Target directory ID '%s' is invalid!".formatted(targetDirectoryID));
+        }
+
+        try {
+            final StorageTaskChownNode storageTask = new StorageTaskChownNode(this.storageTree, targetStorageNode, user, group, isRecursive, this.storageTasksMap);
+            return storageTask.getStorageServiceResponse();
+        } catch (Exception exception) {
+            throw new StorageServiceException("Directory ownership change task initialization failed: %s".formatted(exception.getMessage()), exception);
+        }
+    }
+
+    public StorageServiceResponse renameDirectoryStorageNode(UUID targetDirectoryID, String newDirectoryName) throws Exception {
+        final StorageNode targetStorageNode = this.storageTree.retrieveStorageNode(targetDirectoryID);
+        if (targetStorageNode == null || !targetStorageNode.isDirectory()) {
+            throw new StorageServiceException("Target directory ID '%s' is invalid!".formatted(targetDirectoryID));
+        }
+
+        if (newDirectoryName == null || newDirectoryName.isEmpty() || newDirectoryName.isBlank()) {
+            throw new StorageServiceException("New directory name cannot be blank!".formatted());
+        }
+
+        try {
+            final StorageTaskTransferNode storageTask = new StorageTaskTransferNode(this.storageTree, targetStorageNode, newDirectoryName, this.storageTasksMap);
+            return storageTask.getStorageServiceResponse();
+        } catch (Exception exception) {
+            throw new StorageServiceException("Directory update task initialization failed: %s".formatted(exception.getMessage()), exception);
+        }
+    }
+
+    public StorageServiceResponse transferDirectoryStorageNode(UUID targetDirectoryID, UUID destinationDirectoryID, String newDirectoryName, Boolean persistOriginal) throws Exception {
         final StorageNode targetStorageNode = this.storageTree.retrieveStorageNode(targetDirectoryID);
         if (targetStorageNode == null || !targetStorageNode.isDirectory()) {
             throw new StorageServiceException("Target directory ID '%s' is invalid!".formatted(targetDirectoryID.toString()));
@@ -176,7 +265,7 @@ public class Storage {
         }
 
         try {
-            final StorageTaskTransferNode storageTask = new StorageTaskTransferNode(this.storageTree, targetStorageNode, destinationStorageNode, persistOriginal, this.storageTasksMap);
+            final StorageTaskTransferNode storageTask = new StorageTaskTransferNode(this.storageTree, targetStorageNode, destinationStorageNode, newDirectoryName, persistOriginal, this.storageTasksMap);
             return storageTask.getStorageServiceResponse();
         } catch (Exception exception) {
             throw new StorageServiceException("Directory %s task initialization failed: %s".formatted(persistOriginal ? "copy" : "move", exception.getMessage()), exception);
@@ -233,9 +322,7 @@ public class Storage {
             }
 
             /* Synchronized, setters invisible, etc. */
-            storageTask.execute(taskParameters);
-
-            return storageTask.getStorageServiceResponse();
+            return storageTask.execute(taskParameters);
         } catch (Exception exception) {
             throw new StorageServiceException("Task ID '%s' is invalid: %s".formatted(taskID, exception.getMessage()));
         }

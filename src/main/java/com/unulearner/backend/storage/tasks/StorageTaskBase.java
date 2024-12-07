@@ -20,7 +20,7 @@ public class StorageTaskBase {
     private final UUID taskUUID;
 
     protected StorageTaskBase(StorageTree storageTree, StorageTasksMap storageTasksMap) {  
-        this.taskExceptionHandler = new ExceptionHandler(); 
+        this.taskExceptionHandler = new ExceptionHandler();
         this.taskStorageTasksMap = storageTasksMap;
         this.executiveStorageTree = storageTree;
         this.taskLog = new ArrayList<>();
@@ -51,8 +51,8 @@ public class StorageTaskBase {
     }
 
     /* This is the outward facing method, meant to be fired by the service shell or the controller */
-    public synchronized void execute(Map<String, Object> taskParameters) {
-        return;
+    public synchronized StorageServiceResponse execute(Map<String, Object> taskParameters) {
+        return this.getStorageServiceResponse();
     }
 
     public StorageServiceResponse getStorageServiceResponse() {

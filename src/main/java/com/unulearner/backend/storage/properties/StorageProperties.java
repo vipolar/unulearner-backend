@@ -3,6 +3,8 @@ package com.unulearner.backend.storage.properties;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
 
+import java.util.UUID;
+
 @Component
 @ConfigurationProperties(prefix = "backend.storage")
 public class StorageProperties {
@@ -30,6 +32,90 @@ public class StorageProperties {
     }
 
     /**
+     * UUID of the root user to whom all unaccounted for storage nodes will belong to
+     */
+    private UUID rootUserUUID = null;
+
+    /**
+     * Get UUID of the root user to whom all unaccounted for storage nodes will belong to
+     */
+    public UUID getRootUserUUID() {
+        return this.rootUserUUID;
+    }
+
+    /**
+     * Set UUID of the root user to whom all unaccounted for storage nodes will belong to
+     */
+    public void setRootUserUUID(UUID rootUserUUID) {
+        this.rootUserUUID = rootUserUUID;
+    }
+
+    /**
+     *
+     */
+    private UUID defaultUserUUID = null;
+
+    public UUID getDefaultUserUUID() {
+        return this.defaultUserUUID;
+    }
+
+    public void setDefaultUserUUID(UUID defaultUserUUID) {
+        this.defaultUserUUID = defaultUserUUID;
+    }
+
+    /**
+     *
+     */
+    private UUID defaultGroupUUID = null;
+
+    public UUID getDefaultGroupUUID() {
+        return this.defaultGroupUUID;
+    }
+
+    public void setDefaultGroupUUID(UUID defaultGroupUUID) {
+        this.defaultGroupUUID = defaultGroupUUID;
+    }
+
+    /**
+     *
+     */
+    private Short defaultPermissionFlagsUmask;
+
+    public Short getDefaultPermissionFlagsUmask() {
+        return defaultPermissionFlagsUmask;
+    }
+
+    public void setDefaultPermissionFlagsUmask(Short defaultPermissionFlagsUmask) {
+        this.defaultPermissionFlagsUmask = defaultPermissionFlagsUmask;
+    }
+
+    /**
+     *
+     */
+    private Short  defaultNewFilePermissionFlags;
+
+    public Short getDefaultNewFilePermissionFlags() {
+        return this.defaultNewFilePermissionFlags;
+    }
+
+    public void setDefaultNewFilePermissionFlags(Short defaultNewFilePermissionFlags) {
+        this.defaultNewFilePermissionFlags = defaultNewFilePermissionFlags;
+    }
+
+    /**
+     *
+     */
+    private Short  defaultNewDirectoryPermissionFlags;
+
+    public Short getDefaultNewDirectoryPermissionFlags() {
+        return this.defaultNewDirectoryPermissionFlags;
+    }
+
+    public void setDefaultNewDirectoryPermissionFlags(Short defaultNewDirectoryPermissionFlags) {
+        this.defaultNewDirectoryPermissionFlags = defaultNewDirectoryPermissionFlags;
+    }
+
+    /**
      * Determines how many attempts each step of the task can make until it is skipped automatically
      */
     private Integer taskMaxRetries = 3;
@@ -38,7 +124,7 @@ public class StorageProperties {
      * Get how many attempts each step of the task can make until it is skipped automatically
      */
     public Integer getTaskMaxRetries() {
-        return taskMaxRetries;
+        return this.taskMaxRetries;
     }
 
     /**

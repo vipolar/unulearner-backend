@@ -1,7 +1,7 @@
 package com.unulearner.backend.storage.statics;
 
-import com.unulearner.backend.storage.exceptions.FileNameValidationException;
-import com.unulearner.backend.storage.exceptions.FileNameGenerationException;
+import com.unulearner.backend.storage.exceptions.NodeNameValidationException;
+import com.unulearner.backend.storage.exceptions.NodeNameGenerationException;
 
 import java.util.regex.Pattern;
 import java.util.regex.Matcher;
@@ -25,36 +25,36 @@ public final class StorageFileName {
      * Validates file name against all possible patterns that an OS could find invalid
      * @param targetName name to validate
      * @return validated name in case of success
-     * @throws FileNameValidationException 
+     * @throws NodeNameValidationException 
      */
-    public static String validateFileName(String targetName) throws FileNameValidationException {
+    public static String validateFileName(String targetName) throws NodeNameValidationException {
         final String validatedName;
 
         // Check if the file name is null, empty, blank
         if (targetName == null || targetName.isEmpty() || (validatedName = targetName.trim()).isBlank()) {
-            throw new FileNameValidationException("File name is null or empty.");
+            throw new NodeNameValidationException("File name is null or empty.");
         }
 
         // Check if the file name exceeds the maximum length
         if (validatedName.length() > MAX_LENGTH) {
-            throw new FileNameValidationException("File name exceeds the maximum length of " + MAX_LENGTH + " characters.");
+            throw new NodeNameValidationException("File name exceeds the maximum length of " + MAX_LENGTH + " characters.");
         }
 
         // Check for invalid characters
         Matcher matcher = INVALID_CHARS_PATTERN.matcher(validatedName);
         if (matcher.find()) {
-            throw new FileNameValidationException("File name contains invalid character: '" + matcher.group().charAt(0) + "'");
+            throw new NodeNameValidationException("File name contains invalid character: '" + matcher.group().charAt(0) + "'");
         }
 
         // Check for trailing spaces or periods
         if (validatedName.endsWith(" ") || validatedName.endsWith(".")) {
-            throw new FileNameValidationException("File name ends with an invalid character: '" + validatedName.charAt(validatedName.length() - 1) + "'");
+            throw new NodeNameValidationException("File name ends with an invalid character: '" + validatedName.charAt(validatedName.length() - 1) + "'");
         }
 
         // Check for system-specific reserved file names
         for (String reservedName : OS_RESERVED_NAMES) {
             if (validatedName.equalsIgnoreCase(reservedName)) {
-                throw new FileNameValidationException("File name is an OS reserved name.");
+                throw new NodeNameValidationException("File name is an OS reserved name.");
             }
         }
 
@@ -69,9 +69,9 @@ public final class StorageFileName {
      * Breaks the provided name to its core parts and appends or increments the already existing (N) to it (N being the number of the copy)
      * @param targetName name to generate a new from
      * @return an (N) appended name of the provided name
-     * @throws FileNameGenerationException 
+     * @throws NodeNameGenerationException 
      */
-    public static String findNextAvailableFileName(String targetName) throws FileNameGenerationException {
+    public static String findNextAvailableFileName(String targetName) throws NodeNameGenerationException {
         final Matcher matcher = FILE_NAME_DIVIDER_PATTERN.matcher(targetName);
 
         String retVal = null;
@@ -102,7 +102,7 @@ public final class StorageFileName {
                 fileExtension = fileExtension.substring(1);
             }
         } else {
-            throw new FileNameGenerationException("File name couldn't be parsed.");
+            throw new NodeNameGenerationException("File name couldn't be parsed.");
         }
 
         // Assemble the file name from the parts available
@@ -113,7 +113,7 @@ public final class StorageFileName {
         }
 
         if (retVal == null || retVal.isEmpty() || retVal.isBlank()) {
-            throw new FileNameGenerationException("File name generation was unsuccessful.");
+            throw new NodeNameGenerationException("File name generation was unsuccessful.");
         }
 
         return retVal.trim();

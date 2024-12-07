@@ -1,7 +1,9 @@
 package com.unulearner.backend.storage;
 
+import java.io.File;
 import java.util.Map;
 import java.util.UUID;
+import org.springframework.http.MediaType;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpHeaders;
 import org.springframework.core.io.Resource;
@@ -10,6 +12,8 @@ import org.springframework.stereotype.Controller;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseBody;
@@ -25,6 +29,8 @@ import com.unulearner.backend.storage.responses.StorageServiceResponse;
 public class StorageController {
     private final Storage storageService;
     private final StorageProperties storageProperties;
+    private final Long PROCESS_ID = ProcessHandle.current().pid();
+    private final String TEMP_DIR = System.getProperty("java.io.tmpdir");
 
     public StorageController(Storage storageService, StorageProperties storageProperties) {
         this.storageService = storageService;
@@ -45,17 +51,20 @@ public class StorageController {
      * @param destinationDirectoryID UUID of the directory to upload to
      * @return <b>{@code ResponseEntity}</b> wrapping a <b>{@code StorageTaskState}</b> containing the appropriate <b><i>{@code StorageTreeNode(s)}</i></b> or a <b>{@code StorageServiceError}</b> containing the <b><i>{@code !error message!}</i></b>
      */
-    @PostMapping("/upload/file/to/{destinationDirectoryID}")
-    public ResponseEntity<?> uploadFile(
+    @PostMapping(value = "/upload/file/to/{destinationDirectoryID}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+        public ResponseEntity<?> uploadFile(
         @PathVariable UUID destinationDirectoryID,
         @RequestParam(name = "content") MultipartFile content,
-        @RequestParam(name = "description") String description) {
+        @RequestPart(name = "node") StorageEntry newStorageNode) {
 
         try {
-            final StorageServiceResponse response = storageService.createFileStorageNode(content, description, destinationDirectoryID);
+            final File tempFile = new File(TEMP_DIR, "tmp-%d-%s-%s.tmp".formatted(PROCESS_ID, UUID.randomUUID().toString(), newStorageNode.getName()));
+            content.transferTo(tempFile); /* Failure at this point is fatal to the request (it is an intended behavior!) */
+
+            final StorageServiceResponse response = storageService.createFileStorageNode(tempFile, newStorageNode, destinationDirectoryID);
             return new ResponseEntity<StorageServiceResponse>(response, HttpStatus.OK);
         } catch (Exception exception) {
-            return new ResponseEntity<String>("Failed to upload file '%s' to '%s' directory! Error: %s".formatted(content.getOriginalFilename(), destinationDirectoryID.toString(), exception.getMessage()), HttpStatus.INTERNAL_SERVER_ERROR);
+            return new ResponseEntity<String>("Failed to upload file '%s' to '%s' directory! Error: %s".formatted(newStorageNode.getName(), destinationDirectoryID.toString(), exception.getMessage()), HttpStatus.INTERNAL_SERVER_ERROR);
         }
     }
 
@@ -65,17 +74,44 @@ public class StorageController {
      * @param updatedDescription updated description for the file (storage node)
      * @return <b>{@code ResponseEntity}</b> wrapping a <b>{@code StorageTaskState}</b> containing the appropriate <b><i>{@code StorageTreeNode(s)}</i></b> or a <b>{@code StorageServiceError}</b> containing the <b><i>{@code !error message!}</i></b>
      */
-    @PostMapping("/update/file/{targetFileID}")
+    @PostMapping("/update/file")
     public ResponseEntity<?> updateFile(
-        @PathVariable UUID targetFileID,
-        @RequestParam(name = "name", required = false) String updatedName,
-        @RequestParam(name = "description", required = false) String updatedDescription) {
+        @RequestBody StorageEntry updatedStorageNode) {
 
         try {
-            final StorageServiceResponse response = storageService.updateFileStorageNode(targetFileID, updatedName, updatedDescription);
+            final StorageServiceResponse response = storageService.updateFileStorageNode(updatedStorageNode);
             return new ResponseEntity<StorageServiceResponse>(response, HttpStatus.OK);
         } catch (Exception exception) {
-            return new ResponseEntity<String>("Failed to update '%s' file! Error: %s".formatted(targetFileID.toString(), exception.getMessage()), HttpStatus.INTERNAL_SERVER_ERROR);
+            return new ResponseEntity<String>("Failed to update '%s' file! Error: %s".formatted(updatedStorageNode.getId().toString(), exception.getMessage()), HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    @PostMapping("/chmod/file/{targetFileID}")
+    public ResponseEntity<?> chmodFile(
+        @PathVariable UUID targetFileID,
+        @RequestParam(required = true) Short flags,
+        @RequestParam(required = false) Boolean recursive) {
+
+        try {
+            final StorageServiceResponse response = storageService.chmodFileStorageNode(targetFileID, flags, recursive);
+            return new ResponseEntity<StorageServiceResponse>(response, HttpStatus.OK);
+        } catch (Exception exception) {
+            return new ResponseEntity<String>("Failed to update '%s' file permission flags! Error: %s".formatted(targetFileID, exception.getMessage()), HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    @PostMapping("/chown/file/{targetFileID}")
+    public ResponseEntity<?> chownFile(
+        @PathVariable UUID targetFileID,
+        @RequestParam(required = true) UUID user,
+        @RequestParam(required = true) UUID group,
+        @RequestParam(required = false) Boolean recursive) {
+
+        try {
+            final StorageServiceResponse response = storageService.chownFileStorageNode(targetFileID, user, group, recursive);
+            return new ResponseEntity<StorageServiceResponse>(response, HttpStatus.OK);
+        } catch (Exception exception) {
+            return new ResponseEntity<String>("Failed to update '%s' file permission flags! Error: %s".formatted(targetFileID, exception.getMessage()), HttpStatus.INTERNAL_SERVER_ERROR);
         }
     }
 
@@ -87,10 +123,11 @@ public class StorageController {
     @PostMapping("/copy/file/{targetFileID}/to/{destinationDirectoryID}")
     public ResponseEntity<?> copyFile(
         @PathVariable UUID targetFileID,
-        @PathVariable UUID destinationDirectoryID) {
+        @PathVariable UUID destinationDirectoryID,
+        @RequestParam(required = false) String newName) {
 
         try {
-            final StorageServiceResponse response = storageService.transferFileStorageNode(targetFileID, destinationDirectoryID, true);
+            final StorageServiceResponse response = storageService.transferFileStorageNode(targetFileID, destinationDirectoryID, newName, true);
             return new ResponseEntity<StorageServiceResponse>(response, HttpStatus.OK);
         } catch (Exception exception) {
             return new ResponseEntity<String>("Failed to copy file '%s' to '%s' directory! Error: %s".formatted(targetFileID, destinationDirectoryID, exception.getMessage()), HttpStatus.INTERNAL_SERVER_ERROR);
@@ -105,10 +142,11 @@ public class StorageController {
     @PostMapping("/move/file/{targetFileID}/to/{destinationDirectoryID}")
     public ResponseEntity<?> moveFile(
         @PathVariable UUID targetFileID,
-        @PathVariable UUID destinationDirectoryID) {
+        @PathVariable UUID destinationDirectoryID,
+        @RequestParam(required = false) String newName) {
 
         try {
-            final StorageServiceResponse response = storageService.transferFileStorageNode(targetFileID, destinationDirectoryID, false);
+            final StorageServiceResponse response = storageService.transferFileStorageNode(targetFileID, destinationDirectoryID, newName, false);
             return new ResponseEntity<StorageServiceResponse>(response, HttpStatus.OK);
         } catch (Exception exception) {
             return new ResponseEntity<String>("Failed to move file '%s' to '%s' directory! Error: %s".formatted(targetFileID, destinationDirectoryID, exception.getMessage()), HttpStatus.INTERNAL_SERVER_ERROR);
@@ -163,14 +201,13 @@ public class StorageController {
     @PostMapping("/create/directory/in/{destinationDirectoryID}")
     public ResponseEntity<?> createDirectory(
         @PathVariable UUID destinationDirectoryID,
-        @RequestParam(name = "directory") String directory,
-        @RequestParam(name = "description") String description) {
+        @RequestBody StorageEntry newStorageNode) {
 
         try {
-            final StorageServiceResponse response = storageService.createDirectoryStorageNode(directory, description, destinationDirectoryID);
+            final StorageServiceResponse response = storageService.createDirectoryStorageNode(newStorageNode, destinationDirectoryID);
             return new ResponseEntity<StorageServiceResponse>(response, HttpStatus.OK);
         } catch (Exception exception) {
-            return new ResponseEntity<String>("Failed to create new directory '%s' and add it to '%s' directory! Error: %s".formatted(directory, destinationDirectoryID.toString(), exception.getMessage()), HttpStatus.INTERNAL_SERVER_ERROR);
+            return new ResponseEntity<String>("Failed to create new directory '%s' and add it to '%s' directory! Error: %s".formatted("directory", destinationDirectoryID.toString(), exception.getMessage()), HttpStatus.INTERNAL_SERVER_ERROR);
         }
     }
 
@@ -180,17 +217,44 @@ public class StorageController {
      * @param targetDirectoryID UUID of the directory to update
      * @return <b>{@code ResponseEntity}</b> wrapping a <b>{@code StorageTaskState}</b> containing the appropriate <b><i>{@code StorageTreeNode(s)}</i></b> or a <b>{@code StorageServiceError}</b> containing the <b><i>{@code !error message!}</i></b>
      */
-    @PostMapping("/update/directory/{targetDirectoryID}")
+    @PostMapping("/update/directory")
     public ResponseEntity<?> updateDirectory(
-        @PathVariable UUID targetDirectoryID,
-        @RequestParam(name = "directory", required = false) String updatedName,
-        @RequestParam(name = "description", required = false) String updatedDescription) {
+        @RequestBody StorageEntry updatedStorageNode) {
 
         try {
-            final StorageServiceResponse response = storageService.updateDirectoryStorageNode(targetDirectoryID, updatedName, updatedDescription);
+            final StorageServiceResponse response = storageService.updateDirectoryStorageNode(updatedStorageNode);
             return new ResponseEntity<StorageServiceResponse>(response, HttpStatus.OK);
         } catch (Exception exception) {
-            return new ResponseEntity<String>("Failed to update '%s' directory! Error: %s".formatted(targetDirectoryID.toString(), exception.getMessage()), HttpStatus.INTERNAL_SERVER_ERROR);
+            return new ResponseEntity<String>("Failed to update '%s' directory! Error: %s".formatted(updatedStorageNode.getId().toString(), exception.getMessage()), HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    @PostMapping("/chmod/directory/{targetDirectoryID}")
+    public ResponseEntity<?> chmodDirectory(
+        @PathVariable UUID targetDirectoryID,
+        @RequestParam(required = true) Short flags,
+        @RequestParam(required = false) Boolean recursive) {
+
+        try {
+            final StorageServiceResponse response = storageService.chmodDirectoryStorageNode(targetDirectoryID, flags, recursive);
+            return new ResponseEntity<StorageServiceResponse>(response, HttpStatus.OK);
+        } catch (Exception exception) {
+            return new ResponseEntity<String>("Failed to update '%s' directory permission flags! Error: %s".formatted(targetDirectoryID, exception.getMessage()), HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    @PostMapping("/chown/directory/{targetDirectoryID}")
+    public ResponseEntity<?> chownDirectory(
+        @PathVariable UUID targetDirectoryID,
+        @RequestParam(required = true) UUID user,
+        @RequestParam(required = true) UUID group,
+        @RequestParam(required = false) Boolean recursive) {
+
+        try {
+            final StorageServiceResponse response = storageService.chownDirectoryStorageNode(targetDirectoryID, user, group, recursive);
+            return new ResponseEntity<StorageServiceResponse>(response, HttpStatus.OK);
+        } catch (Exception exception) {
+            return new ResponseEntity<String>("Failed to update '%s' directory permission flags! Error: %s".formatted(targetDirectoryID, exception.getMessage()), HttpStatus.INTERNAL_SERVER_ERROR);
         }
     }
 
@@ -202,10 +266,11 @@ public class StorageController {
     @PostMapping("/copy/directory/{targetDirectoryID}/to/{destinationDirectoryID}")
     public ResponseEntity<?> copyDirectory(
         @PathVariable UUID targetDirectoryID,
-        @PathVariable UUID destinationDirectoryID) {
+        @PathVariable UUID destinationDirectoryID,
+        @RequestParam(required = false) String newName) {
 
         try {
-            final StorageServiceResponse response = storageService.transferDirectoryStorageNode(targetDirectoryID, destinationDirectoryID, true);
+            final StorageServiceResponse response = storageService.transferDirectoryStorageNode(targetDirectoryID, destinationDirectoryID, newName, true);
             return new ResponseEntity<StorageServiceResponse>(response, HttpStatus.OK);
         } catch (Exception exception) {
             return new ResponseEntity<String>("Failed to copy directory '%s' to '%s' directory! Error: %s".formatted(targetDirectoryID, destinationDirectoryID, exception.getMessage()), HttpStatus.INTERNAL_SERVER_ERROR);
@@ -220,10 +285,11 @@ public class StorageController {
     @PostMapping("/move/directory/{targetDirectoryID}/to/{destinationDirectoryID}")
     public ResponseEntity<?> moveDirectory(
         @PathVariable UUID targetDirectoryID,
-        @PathVariable UUID destinationDirectoryID) {
+        @PathVariable UUID destinationDirectoryID,
+        @RequestParam(required = false) String newName) {
 
         try {
-            final StorageServiceResponse response = storageService.transferDirectoryStorageNode(targetDirectoryID, destinationDirectoryID, false);
+            final StorageServiceResponse response = storageService.transferDirectoryStorageNode(targetDirectoryID, destinationDirectoryID, newName, false);
             return new ResponseEntity<StorageServiceResponse>(response, HttpStatus.OK);
         } catch (Exception exception) {
             return new ResponseEntity<String>("Failed to move directory '%s' to '%s' directory! Error: %s".formatted(targetDirectoryID, destinationDirectoryID, exception.getMessage()), HttpStatus.INTERNAL_SERVER_ERROR);

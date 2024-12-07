@@ -9,6 +9,6 @@ import com.unulearner.backend.storage.entities.StorageNode;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface StorageRepository extends JpaRepository<StorageNode, UUID>  {
-    Optional<StorageNode> findByOnDiskURL(@Param("onDiskURL") String onDiskURL);
+    Optional<StorageNode> findByUrl(@Param("url") String url);
     List<StorageNode> findAllByParent(@Param("parent") StorageNode parent);
 }

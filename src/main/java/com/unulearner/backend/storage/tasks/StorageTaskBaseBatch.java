@@ -17,6 +17,10 @@ public class StorageTaskBaseBatch extends StorageTaskBase {
     protected void advanceStorageTask() {
         return;
     }
+
+    protected void skipStorageTaskCurrentAction() {
+        return;
+    }
     
     public class StorageTaskCurrentAction extends StorageTaskAction {
         @JsonIgnore
@@ -28,7 +32,7 @@ public class StorageTaskBaseBatch extends StorageTaskBase {
         @JsonIgnore
         private final List<StorageTaskCurrentAction> childStorageTaskActionsHiddenList;
 
-        public StorageTaskCurrentAction(StorageTaskCurrentAction parentStorageTaskAction) {
+        protected StorageTaskCurrentAction(StorageTaskCurrentAction parentStorageTaskAction) {
             super();
 
             this.parentStorageTaskAction = parentStorageTaskAction;

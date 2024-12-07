@@ -8,14 +8,22 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Column;
+import jakarta.persistence.PostLoad;
 import jakarta.persistence.OneToMany;
+import jakarta.persistence.PostUpdate;
+import jakarta.persistence.PostPersist;
 import jakarta.persistence.PreUpdate;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Transient;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.PrePersist;
+import jakarta.persistence.Inheritance;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
+import jakarta.persistence.InheritanceType;
+import jakarta.persistence.DiscriminatorType;
+import jakarta.persistence.DiscriminatorValue;
+import jakarta.persistence.DiscriminatorColumn;
 
 import org.hibernate.annotations.UpdateTimestamp;
 import org.hibernate.annotations.CreationTimestamp;
@@ -30,6 +38,9 @@ import com.unulearner.backend.storage.exceptions.StorageServiceException;
 
 @Entity
 @Table(name = "storage_node")
+@DiscriminatorValue("StorageNode")
+@Inheritance(strategy = InheritanceType.SINGLE_TABLE)
+@DiscriminatorColumn(name = "entity_type", discriminatorType = DiscriminatorType.STRING)
 public class StorageNode {
     /**
      * Default constructor. Never meant to be called manually!!!
@@ -49,8 +60,101 @@ public class StorageNode {
         return this.id;
     }
 
-    public void setId(UUID id) {
+    public StorageNode setId(UUID id) {
         this.id = id;
+
+        this.hasBeenEdited = true;
+        return this;
+    }
+
+    /**
+     * This property is guaranteed to be unique with each node as it emulates unix-like file system urls.
+     * From this property we can easily derive the full, physical path to a file/directory.
+     */
+    @Column(name = "url", columnDefinition = "TEXT COLLATE \"C\"", unique = true, nullable = false)
+    private String url;
+
+    public String getUrl() {
+        if (this.url != null && !this.url.startsWith("/")) {
+            return "/" + this.url;
+        }
+        
+        return this.url;
+    }
+
+    public StorageNode setUrl(String url) {
+        this.url = url.replace("\\", "/").trim();
+
+        this.hasBeenEdited = true;
+        return this;
+    }
+
+    /**
+     * This property is mostly for the benefit of the front-end, although it can still be useful in the back-end.
+     */
+    @Column(name = "name", columnDefinition = "TEXT COLLATE \"C\"", nullable = false)
+    private String name;
+
+    public String getName() {
+        return this.name;
+    }
+
+    public StorageNode setName(String name) {
+        this.name = name;
+
+        this.hasBeenEdited = true;
+        return this;
+    }
+
+    /**
+     * Owner (ownership is transfarable) of the node and the file/directory associated with it.
+     */
+    @Column(name = "owner_user", columnDefinition = "UUID", unique = false, nullable = false, updatable = true)
+    private UUID user;
+
+    public UUID getUser() {
+        return this.user;
+    }
+
+    public StorageNode setUser(UUID user) {
+        this.user = user;
+
+        this.hasBeenEdited = true;
+        return this;
+    }
+
+    /**
+     * Authorized group that may have special privileges in accessing the node and the file/directory associated with it.
+     */
+    @Column(name = "owner_group", columnDefinition = "UUID", unique = false, nullable = false, updatable = true)
+    private UUID group;
+
+    public UUID getGroup() {
+        return this.group;
+    }
+
+    public StorageNode setGroup(UUID group) {
+        this.group = group;
+
+        this.hasBeenEdited = true;
+        return this;
+    }
+
+    /**
+     * Unix-like file/directory permissions presented as a 3 digit integer (not applied to physical files/directories - only the nodes associated to them.)
+     */
+    @Column(name = "permissions", columnDefinition = "SMALLINT", unique = false, nullable = false, updatable = true)
+    private Short permissions;
+    
+    public Short getPermissions() {
+        return this.permissions;
+    }
+
+    public StorageNode setPermissions(Short permissions) {
+        this.permissions = permissions;
+
+        this.hasBeenEdited = true;
+        return this;
     }
 
     /**
@@ -66,57 +170,11 @@ public class StorageNode {
         return this.parent;
     }
 
-    public void setParent(StorageNode parent) {
+    public StorageNode setParent(StorageNode parent) {
         this.parent = parent;
-    }
 
-    /**
-     * This property is guaranteed to be unique with each node as it emulates unix-like file system urls.
-     * From this property we can easily derive the full, physical path of a file/directory.
-     * Due to its inherent uniqueness and parallel to physical paths "url" property is a great choice to serve as an ID!
-     */
-    @Column(name = "ondiskurl", columnDefinition = "TEXT COLLATE \"C\"", unique = true, nullable = false)
-    private String onDiskURL;
-
-    public String getOnDiskURL() {
-        if (this.onDiskURL != null && !this.onDiskURL.startsWith("/")) {
-            return "/" + this.onDiskURL;
-        }
-        
-        return this.onDiskURL;
-    }
-
-    public void setOnDiskURL(String onDiskURL) {
-        this.onDiskURL = onDiskURL.replace("\\", "/");
-    }
-
-    /**
-     * This property is mostly for the benefit of the front-end, although it can still be useful in the back-end.
-     */
-    @Column(name = "ondiskname", columnDefinition = "TEXT COLLATE \"C\"", nullable = false)
-    private String onDiskName;
-
-    public String getOnDiskName() {
-        return this.onDiskName;
-    }
-
-    public void setOnDiskName(String onDiskName) {
-        this.onDiskName = onDiskName;
-    }
-
-    /**
-     * This property serves no purpose in file system management.
-     * This property is purely for the human eyes or the search bots.
-     */
-    @Column(name = "description", columnDefinition = "TEXT", nullable = false)
-    private String description;
-
-    public String getDescription() {
-        return this.description;
-    }
-
-    public void setDescription(String description) {
-        this.description = description;
+        this.hasBeenEdited = true;
+        return this;
     }
 
     /**
@@ -157,8 +215,11 @@ public class StorageNode {
         return this.children;
     }
 
-    public void setChildren(List<StorageNode> children) {
+    public StorageNode setChildren(List<StorageNode> children) {
         this.children = children;
+
+        this.hasBeenEdited = true;
+        return this;
     }
 
     /**
@@ -167,20 +228,22 @@ public class StorageNode {
      */
     @Transient
     @JsonIgnore
-    private NodePath nodePath;
+    private NodePath nodePath = null;
 
     public NodePath getNodePath() {
         return this.nodePath;
     }
 
-    public void setNodePath(NodePath nodePath) {
+    public StorageNode setNodePath(NodePath nodePath) {
         this.nodePath = nodePath;
 
         /* null path is allowed all the way up until the node is committed to the database */
         if (nodePath != null) {
-            this.setOnDiskName(nodePath.getFileName().toString());
-            this.setOnDiskURL(nodePath.getRelativePath().toString());
+            this.setName(nodePath.getFileName().toString());
+            this.setUrl(nodePath.getRelativePath().toString());
         }
+
+        return this;
     }
 
     /**
@@ -194,8 +257,10 @@ public class StorageNode {
         return this.isAccessible;
     }
 
-    public void setIsAccessible(Boolean isAccessible) {
+    public StorageNode setIsAccessible(Boolean isAccessible) {
         this.isAccessible = isAccessible;
+
+        return this;
     }
 
     /**
@@ -207,12 +272,25 @@ public class StorageNode {
         return this.isConfirmed;
     }
 
-    public void setIsConfirmed(Boolean isConfirmed) {
+    public StorageNode setIsConfirmed(Boolean isConfirmed) {
         this.isConfirmed = isConfirmed;
+
+        this.hasBeenEdited = true;
+        return this;
     }
 
+    @Transient
+    @JsonIgnore
     public Boolean isDirectory() {
         return this.children != null;
+    }
+
+    @Transient
+    @JsonIgnore
+    private Boolean hasBeenEdited = false;
+
+    public Boolean getHasBeenEdited() {
+        return this.hasBeenEdited;
     }
 
     /**
@@ -230,16 +308,35 @@ public class StorageNode {
         }
     }
 
-    /**
-     * @param parent Self-explanatory. This is a JPA-persisted, JSON-ignored property, beneficial only in creating a node tree.
-     * @param children Self-explanatory. This is a transient property, beneficial only in creating a node tree (mirroring the parent relationship).
-     * @param nodePath Properties derived from it are public, but the path itself is for internal use only! On-disk path of the file/directory associated with the node.
-     * @param description This property serves no purpose in file system management. This property is purely for the human eyes or the search bots (although...)
-     */
-    public StorageNode(StorageNode parent, List<StorageNode> children, NodePath nodePath, String description) {
-        this.setParent(parent);
-        this.setChildren(children);
-        this.setNodePath(nodePath);
-        this.setDescription(description);
+    @PostLoad
+    @PostUpdate
+    @PostPersist
+    private void resetHasBeenEdited() {
+        this.hasBeenEdited = false;
+    }
+
+    public StorageNode mergeNode(StorageNode storageNode) {
+        this.setIsAccessible(storageNode.getIsAccessible())
+            .setNodePath(storageNode.getNodePath())
+            .setChildren(storageNode.getChildren())
+            .setParent(storageNode.getParent());
+
+            return this;
+    }
+
+    @Override
+    public String toString() {
+        return "StorageNode{" +
+            "id=" + this.getId() +
+            ", url='" + this.getUrl() + '\'' +
+            ", name='" + this.getName() + '\'' +
+            ", user=" + this.getUser() +
+            ", group=" + this.getGroup() +
+            ", created=" + this.getCreated() +
+            ", updated=" + this.getUpdated() +
+            ", isDirectory=" + this.isDirectory() +
+            ", isConfirmed=" + this.getIsConfirmed() +
+            ", isAccessible=" + this.getIsAccessible() +
+            '}';
     }
 }
