@@ -2,7 +2,6 @@ package com.unulearner.backend.content.english.wordlist;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 
 //import java.sql.Timestamp;
 //import java.util.concurrent.TimeUnit;
@@ -66,7 +65,7 @@ public class EnglishWordlistRepositoryController {
             // Read the file from the specified path
             //TODO: this.storageProperties shouldn't be here!!! only the file URL!!!
             String wordliURI = this.storageProperties.getRootDirectory() + wordlist;
-            Path file = Paths.get(wordliURI);
+            Path file = Path.of(wordliURI);
 
             Iterable<String> words = Files.lines(file)
                                     .filter(line -> !line.trim().isEmpty()) // Filter out empty lines

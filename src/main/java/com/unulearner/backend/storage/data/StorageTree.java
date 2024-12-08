@@ -10,7 +10,6 @@ import java.util.Collections;
 
 import java.io.File;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.nio.file.Files;
 import java.nio.file.FileVisitResult;
 import java.nio.file.SimpleFileVisitor;
@@ -350,7 +349,7 @@ public class StorageTree {
         final NodePath finalNodePath = destinationStorageNode.getNodePath().resolve(newStorageNode.getName());
         if (newFile != null) {
             try {
-                Files.move(Paths.get(newFile.getPath()), finalNodePath.getPath());
+                Files.move(Path.of(newFile.getPath()), finalNodePath.getPath());
             } catch (Exception exception) {
                 throw new StorageServiceException("File content couldn't be written to '%s' file: %s".formatted(finalNodePath.getRelativePath().toString(), exception.getMessage()));
             }

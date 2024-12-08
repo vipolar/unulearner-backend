@@ -1,7 +1,7 @@
 package com.unulearner.backend.storage.services;
 
 import java.nio.file.Files;
-import java.nio.file.Paths;
+import java.nio.file.Path;
 import java.util.Comparator;
 import java.util.Optional;
 import java.util.List;
@@ -109,7 +109,7 @@ public class StorageService implements StorageServiceInterface {
     @Override
     public NodePath getRootDirectory() throws Exception {
         final String rootDirectoryStringPath = this.storageProperties.getRootDirectory();
-        final NodePath rootDirectoryNodePath = new NodePath(Files.createDirectories(Paths.get(rootDirectoryStringPath)));
+        final NodePath rootDirectoryNodePath = new NodePath(Files.createDirectories(Path.of(rootDirectoryStringPath)));
 
         if (!rootDirectoryNodePath.isValidDirectory(false)) {
             throw new RuntimeException("Root '%s' directory is inaccessible or it doesn't exist.".formatted(rootDirectoryStringPath));
