@@ -27,6 +27,7 @@ public class StorageTasksMap {
         this.taskTimeOutInSeconds = this.storageProperties.getTaskTimeOut();
     }
 
+    /* TODO: messages and stuff! */
     public UUID addStorageTask(StorageTaskBase task) {
         UUID taskUUID = null;
 
@@ -48,7 +49,13 @@ public class StorageTasksMap {
         }
 
         scheduledFuture.cancel(false);
-        return this.taskHashMap.get(taskUUID);
+
+        final StorageTaskBase storageTask = this.taskHashMap.get(taskUUID);
+        if (storageTask == null) {
+            throw new StorageServiceException("Task under the ID could not be retrieved".formatted());
+        }
+
+        return storageTask;
     }
 
     public Integer scheduleStorageTaskRemoval(UUID taskUUID) {

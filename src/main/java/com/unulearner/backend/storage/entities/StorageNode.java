@@ -8,13 +8,10 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Column;
-import jakarta.persistence.PostLoad;
 import jakarta.persistence.OneToMany;
-import jakarta.persistence.PostUpdate;
-import jakarta.persistence.PostPersist;
-import jakarta.persistence.PreUpdate;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Transient;
+import jakarta.persistence.PreUpdate;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.Inheritance;
@@ -29,11 +26,11 @@ import org.hibernate.annotations.UpdateTimestamp;
 import org.hibernate.annotations.CreationTimestamp;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonBackReference;
 import com.fasterxml.jackson.annotation.JsonManagedReference;
 
 import com.unulearner.backend.storage.extensions.NodePath;
-
 import com.unulearner.backend.storage.exceptions.StorageServiceException;
 
 @Entity
@@ -63,7 +60,6 @@ public class StorageNode {
     public StorageNode setId(UUID id) {
         this.id = id;
 
-        this.hasBeenEdited = true;
         return this;
     }
 
@@ -84,8 +80,6 @@ public class StorageNode {
 
     public StorageNode setUrl(String url) {
         this.url = url.replace("\\", "/").trim();
-
-        this.hasBeenEdited = true;
         return this;
     }
 
@@ -101,8 +95,22 @@ public class StorageNode {
 
     public StorageNode setName(String name) {
         this.name = name;
+        return this;
+    }
 
-        this.hasBeenEdited = true;
+    /**
+     * This property serves no purpose in file system management.
+     * This property is purely for the human eyes or the search bots.
+     */
+    @Column(name = "description", columnDefinition = "TEXT", nullable = true)
+    private String description;
+
+    public String getDescription() {
+        return this.description;
+    }
+
+    public StorageNode setDescription(String description) {
+        this.description = description;
         return this;
     }
 
@@ -118,8 +126,6 @@ public class StorageNode {
 
     public StorageNode setUser(UUID user) {
         this.user = user;
-
-        this.hasBeenEdited = true;
         return this;
     }
 
@@ -135,26 +141,34 @@ public class StorageNode {
 
     public StorageNode setGroup(UUID group) {
         this.group = group;
-
-        this.hasBeenEdited = true;
         return this;
     }
 
     /**
-     * Unix-like file/directory permissions presented as a 3 digit integer (not applied to physical files/directories - only the nodes associated to them.)
+     * Unix-like file/directory permissions presented as a 4 digit integer (not applied to physical files/directories - only the nodes associated to them.)
      */
-    @Column(name = "permissions", columnDefinition = "SMALLINT", unique = false, nullable = false, updatable = true)
-    private Short permissions;
+    @Column(name = "permission_flags", columnDefinition = "VARCHAR(4)", unique = false, nullable = false, updatable = true)
+    private String permissions;
     
-    public Short getPermissions() {
+    public String getPermissions() {
         return this.permissions;
     }
 
-    public StorageNode setPermissions(Short permissions) {
+    public StorageNode setPermissions(String permissions) {
         this.permissions = permissions;
-
-        this.hasBeenEdited = true;
         return this;
+    }
+
+    public Boolean setuidBitIsSet() {
+        return ((this.permissions.length() == 4 ? (Integer.parseInt(this.permissions, 8) / 1000) % 10 : 0) & 4) != 0;
+    }
+
+    public Boolean setgidBitIsSet() {
+        return ((this.permissions.length() == 4 ? (Integer.parseInt(this.permissions, 8) / 1000) % 10 : 0) & 2) != 0;
+    }
+
+    public Boolean stickyBitIsSet() {
+        return ((this.permissions.length() == 4 ? (Integer.parseInt(this.permissions, 8) / 1000) % 10 : 0) & 1) != 0;
     }
 
     /**
@@ -172,8 +186,6 @@ public class StorageNode {
 
     public StorageNode setParent(StorageNode parent) {
         this.parent = parent;
-
-        this.hasBeenEdited = true;
         return this;
     }
 
@@ -217,8 +229,6 @@ public class StorageNode {
 
     public StorageNode setChildren(List<StorageNode> children) {
         this.children = children;
-
-        this.hasBeenEdited = true;
         return this;
     }
 
@@ -238,9 +248,9 @@ public class StorageNode {
         this.nodePath = nodePath;
 
         /* null path is allowed all the way up until the node is committed to the database */
-        if (nodePath != null) {
-            this.setName(nodePath.getFileName().toString());
-            this.setUrl(nodePath.getRelativePath().toString());
+        if (this.nodePath != null) {
+            this.setName(this.nodePath.getFileName().toString());
+            this.setUrl(this.nodePath.getRelativePath().toString());
         }
 
         return this;
@@ -248,49 +258,22 @@ public class StorageNode {
 
     /**
      * This property ensures that the file/directory is actually accessible (can be read/written to) on disk.
-     * This is a transient property set by the StorageTree constructor itself, meaning that it is prudent to re-check this on request.
      */
-    @Transient
     private Boolean isAccessible = false;
 
+    @JsonProperty("isAccessible")
     public Boolean getIsAccessible() {
-        return this.isAccessible;
-    }
-
-    public StorageNode setIsAccessible(Boolean isAccessible) {
-        this.isAccessible = isAccessible;
-
-        return this;
+        return this.getNodePath() != null && this.getNodePath().isValidNode();
     }
 
     /**
      * This property is set to true only if the node has been committed/updated by user.
      */
-    private Boolean isConfirmed = false;
+    private Boolean isDirectory = null;
 
-    public Boolean getIsConfirmed() {
-        return this.isConfirmed;
-    }
-
-    public StorageNode setIsConfirmed(Boolean isConfirmed) {
-        this.isConfirmed = isConfirmed;
-
-        this.hasBeenEdited = true;
-        return this;
-    }
-
-    @Transient
-    @JsonIgnore
-    public Boolean isDirectory() {
-        return this.children != null;
-    }
-
-    @Transient
-    @JsonIgnore
-    private Boolean hasBeenEdited = false;
-
-    public Boolean getHasBeenEdited() {
-        return this.hasBeenEdited;
+    @JsonProperty("isDirectory")
+    public Boolean getIsDirectory() {
+        return this.isDirectory != null ? this.isDirectory : this.children != null;
     }
 
     /**
@@ -299,29 +282,16 @@ public class StorageNode {
     @PreUpdate
     @PrePersist
     public void preCommitChecks() throws StorageServiceException {
-        if (this.nodePath == null || !this.nodePath.isValidNode()) {
-            throw new StorageServiceException("All nodes must have an accessible physical address attached to them.".formatted());
+        this.isAccessible = this.getIsAccessible();
+        this.isDirectory = this.getIsDirectory();
+
+        if (this.isAccessible != true) {
+            throw new StorageServiceException("Inaccessible node cannot be persisted to the database.".formatted());
         }
 
-        if (this.parent == null && !this.nodePath.getRelativePath().toString().isBlank()) {
-            throw new StorageServiceException("Only root node can have a null parent.".formatted());
+        if (this.getParent() == null && !this.getNodePath().getRelativePath().toString().isBlank()) {
+            throw new StorageServiceException("Inaccessible node cannot be persisted to the database.".formatted());
         }
-    }
-
-    @PostLoad
-    @PostUpdate
-    @PostPersist
-    private void resetHasBeenEdited() {
-        this.hasBeenEdited = false;
-    }
-
-    public StorageNode mergeNode(StorageNode storageNode) {
-        this.setIsAccessible(storageNode.getIsAccessible())
-            .setNodePath(storageNode.getNodePath())
-            .setChildren(storageNode.getChildren())
-            .setParent(storageNode.getParent());
-
-            return this;
     }
 
     @Override
@@ -334,9 +304,9 @@ public class StorageNode {
             ", group=" + this.getGroup() +
             ", created=" + this.getCreated() +
             ", updated=" + this.getUpdated() +
-            ", isDirectory=" + this.isDirectory() +
-            ", isConfirmed=" + this.getIsConfirmed() +
+            ", isDirectory=" + this.getIsDirectory() +
             ", isAccessible=" + this.getIsAccessible() +
+            ", description=" + this.getDescription() +
             '}';
     }
 }

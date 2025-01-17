@@ -8,6 +8,7 @@ import java.util.UUID;
 @Component
 @ConfigurationProperties(prefix = "backend.storage")
 public class StorageProperties {
+    /* TODO: a lot of checking here! */
     /**
      * Print stack trace on exception (applies to storage, mainly the controller)
      */
@@ -79,39 +80,39 @@ public class StorageProperties {
     /**
      *
      */
-    private Short defaultPermissionFlagsUmask;
+    private String defaultPermissionFlagsUmask;
 
-    public Short getDefaultPermissionFlagsUmask() {
-        return defaultPermissionFlagsUmask;
+    public String getDefaultPermissionFlagsUmask() {
+        return this.defaultPermissionFlagsUmask;
     }
 
-    public void setDefaultPermissionFlagsUmask(Short defaultPermissionFlagsUmask) {
+    public void setDefaultPermissionFlagsUmask(String defaultPermissionFlagsUmask) {
         this.defaultPermissionFlagsUmask = defaultPermissionFlagsUmask;
     }
 
     /**
      *
      */
-    private Short  defaultNewFilePermissionFlags;
+    private String  defaultNewFilePermissionFlags;
 
-    public Short getDefaultNewFilePermissionFlags() {
+    public String getDefaultNewFilePermissionFlags() {
         return this.defaultNewFilePermissionFlags;
     }
 
-    public void setDefaultNewFilePermissionFlags(Short defaultNewFilePermissionFlags) {
+    public void setDefaultNewFilePermissionFlags(String defaultNewFilePermissionFlags) {
         this.defaultNewFilePermissionFlags = defaultNewFilePermissionFlags;
     }
 
     /**
      *
      */
-    private Short  defaultNewDirectoryPermissionFlags;
+    private String  defaultNewDirectoryPermissionFlags;
 
-    public Short getDefaultNewDirectoryPermissionFlags() {
+    public String getDefaultNewDirectoryPermissionFlags() {
         return this.defaultNewDirectoryPermissionFlags;
     }
 
-    public void setDefaultNewDirectoryPermissionFlags(Short defaultNewDirectoryPermissionFlags) {
+    public void setDefaultNewDirectoryPermissionFlags(String defaultNewDirectoryPermissionFlags) {
         this.defaultNewDirectoryPermissionFlags = defaultNewDirectoryPermissionFlags;
     }
 

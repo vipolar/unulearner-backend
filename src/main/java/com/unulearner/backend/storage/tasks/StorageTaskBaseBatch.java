@@ -5,15 +5,13 @@ import java.util.ArrayList;
 import java.util.List;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
-import com.unulearner.backend.storage.data.StorageTree;
-import com.unulearner.backend.storage.repository.StorageTasksMap;
 
+import org.springframework.context.annotation.Scope;
+import org.springframework.stereotype.Component;
+
+@Component
+@Scope("prototype")
 public class StorageTaskBaseBatch extends StorageTaskBase {
-
-    public StorageTaskBaseBatch(StorageTree storageTree, StorageTasksMap storageTasksMap) {
-        super(storageTree, storageTasksMap);
-    }
-
     protected void advanceStorageTask() {
         return;
     }
@@ -21,7 +19,7 @@ public class StorageTaskBaseBatch extends StorageTaskBase {
     protected void skipStorageTaskCurrentAction() {
         return;
     }
-    
+
     public class StorageTaskCurrentAction extends StorageTaskAction {
         @JsonIgnore
         private final StorageTaskCurrentAction parentStorageTaskAction;

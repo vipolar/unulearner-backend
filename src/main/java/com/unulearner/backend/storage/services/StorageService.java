@@ -2,23 +2,24 @@ package com.unulearner.backend.storage.services;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+
 import java.util.Comparator;
 import java.util.Optional;
 import java.util.List;
 import java.util.UUID;
 
-import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
+import com.unulearner.backend.storage.interfaces.StorageServiceInterface;
 import org.springframework.stereotype.Service;
 import jakarta.transaction.Transactional;
 
-import com.unulearner.backend.storage.entities.StorageNode;
 import com.unulearner.backend.storage.extensions.NodePath;
-import com.unulearner.backend.storage.interfaces.StorageServiceInterface;
+import com.unulearner.backend.storage.entities.StorageNode;
 import com.unulearner.backend.storage.properties.StorageProperties;
 import com.unulearner.backend.storage.repository.StorageRepository;
 
+import java.util.NoSuchElementException;
+
 @Service
-@ConditionalOnMissingBean(StorageServiceInterface.class)
 public class StorageService implements StorageServiceInterface {
 
     private final StorageProperties storageProperties;
@@ -30,44 +31,55 @@ public class StorageService implements StorageServiceInterface {
     }
 
     @Override
-    public StorageNode createNewStorageNode(StorageNode parent, List<StorageNode> children, NodePath storageNodePath, UUID user, UUID group, Short permissions) {
-        Short defaultPermissions = (short) ((children != null ? storageProperties.getDefaultNewDirectoryPermissionFlags() : storageProperties.getDefaultNewFilePermissionFlags()) & ~storageProperties.getDefaultPermissionFlagsUmask());
+    public StorageNode createNewStorageNode(StorageNode parent, List<StorageNode> children, NodePath storageNodePath, UUID user, UUID group, String stringPermissions) {
+        if (stringPermissions == null) {
+            Integer defaultPermissions = Integer.parseInt(children != null ? storageProperties.getDefaultNewDirectoryPermissionFlags() : storageProperties.getDefaultNewFilePermissionFlags(), 8);
+            Integer defaultUmask = Integer.parseInt(storageProperties.getDefaultPermissionFlagsUmask(), 8);
+            Integer integerPermissions = defaultPermissions & ~defaultUmask;
+            
+            stringPermissions = String.format("%o", integerPermissions);
+        }
 
         final StorageNode newStorageNode = new StorageNode()
             .setParent(parent)
             .setChildren(children)
             .setNodePath(storageNodePath)
-            .setPermissions(defaultPermissions)
+            .setPermissions(stringPermissions)
             .setUser(user != null ? user : storageProperties.getDefaultUserUUID())
-            .setGroup(group != null ? group : storageProperties.getDefaultGroupUUID());
-            /* TODO: maybe add the ability to set permissions at creation? */
+            .setGroup(group != null ? group : storageProperties.getDefaultGroupUUID())
+            .setDescription(children != null ? storageProperties.getRecoveredDirectoryDescription() : storageProperties.getRecoveredFileDescription());
+
         return newStorageNode;
     }
 
     @Override
     public StorageNode createRootStorageNode(List<StorageNode> children, NodePath storageNodePath) {
-        Short rootPermissions = (short) (storageProperties.getDefaultNewDirectoryPermissionFlags() & ~storageProperties.getDefaultPermissionFlagsUmask());
+        Integer defaultPermissions = Integer.parseInt(storageProperties.getDefaultNewDirectoryPermissionFlags(), 8);
+        Integer defaultUmask = Integer.parseInt(storageProperties.getDefaultPermissionFlagsUmask(), 8);
+        Integer integerPermissions = defaultPermissions & ~defaultUmask;
+        String stringPermissions = "%o".formatted(integerPermissions);
 
         final StorageNode newStorageNode = new StorageNode()
             .setChildren(children)
             .setParent(null)
             .setNodePath(storageNodePath)
-            .setPermissions(rootPermissions)
+            .setPermissions(stringPermissions)
             .setUser(storageProperties.getRootUserUUID())
-            .setGroup(storageProperties.getRootUserUUID());
+            .setGroup(storageProperties.getRootUserUUID())
+            .setDescription(storageProperties.getRootDirectoryDescription());
 
         return newStorageNode;
     }
 
     @Override
-    public StorageNode retrieveStorageNodeByURL(String url) throws NullPointerException {
+    public StorageNode retrieveStorageNodeByURL(String url) throws NoSuchElementException {
         final Optional<StorageNode> nullableStorageNode = this.storageRepository.findByUrl(url);
 
         if (nullableStorageNode.isPresent()) {
             return nullableStorageNode.get();
         }
 
-        throw new NullPointerException("Matching record for the provided URL '%s' couldn't be found in the database.".formatted(url));
+        throw new NoSuchElementException("Matching record for the provided URL '%s' couldn't be found in the database.".formatted(url));
     }
 
     @Override
@@ -76,34 +88,20 @@ public class StorageService implements StorageServiceInterface {
     }
 
     @Override
-    public Comparator<StorageNode> getStorageNodeSortingComparator() {
-        return Comparator.comparing((StorageNode iNode) -> iNode.isDirectory() ? 0 : 1).thenComparing(StorageNode::getName);
-    }
-
-    @Override
-    public Comparator<StorageNode> getStorageNodeIndexComparator() {
-        return Comparator.comparing(StorageNode::getName);
-    }
-
-    @Override
     @Transactional
     public StorageNode saveStorageNode(StorageNode storageNode) {
-        StorageNode transientStorageNode = storageNode;
-
-        if (storageNode.getId() != null) { 
-            Optional<StorageNode> optionalManagedStorageNode = storageRepository.findById(storageNode.getId());
-            
-            if (optionalManagedStorageNode.isPresent() == false) {
-                transientStorageNode = optionalManagedStorageNode.get().mergeNode(storageNode);
-            }
-        }
-
-        return storageRepository.save(transientStorageNode).mergeNode(storageNode);
+        return storageRepository.save(storageNode).setNodePath(storageNode.getNodePath()).setChildren(storageNode.getChildren()).setParent(storageNode.getParent());
     }
 
     @Override
     public void deleteStorageNode(StorageNode storageNode) {
+        /* TODO: rethink this... should we actually delete it from the database? */
         storageRepository.delete(storageNode);
+    }
+
+    @Override
+    public Comparator<StorageNode> getStorageComparator() {
+        return Comparator.comparing((StorageNode iNode) -> iNode.getIsDirectory() ? 0 : 1).thenComparing(StorageNode::getName);
     }
 
     @Override

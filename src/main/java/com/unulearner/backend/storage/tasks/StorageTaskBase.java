@@ -5,30 +5,38 @@ import java.util.UUID;
 import java.util.List;
 import java.util.Map;
 
-import com.unulearner.backend.storage.data.StorageTree;
-import com.unulearner.backend.storage.services.ExceptionHandler;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Scope;
+import org.springframework.stereotype.Component;
+import jakarta.annotation.PostConstruct;
+
+import com.unulearner.backend.storage.Storage;
 import com.unulearner.backend.storage.repository.StorageTasksMap;
 import com.unulearner.backend.storage.responses.StorageServiceResponse;
+import com.unulearner.backend.storage.tasks.exception.Handler;
 
+@Component
+@Scope("prototype")
 public class StorageTaskBase {
-    private final ExceptionHandler taskExceptionHandler;
-    private final StorageTasksMap taskStorageTasksMap;
-    private final StorageTree executiveStorageTree;
+    private Handler taskExceptionHandler;
     private StorageTaskAction storageTaskAction;
-    private final List<String> taskLog;
     private TaskState currentState;
-    private final UUID taskUUID;
+    private List<String> taskLog;
+    private UUID taskUUID;
 
-    protected StorageTaskBase(StorageTree storageTree, StorageTasksMap storageTasksMap) {  
-        this.taskExceptionHandler = new ExceptionHandler();
-        this.taskStorageTasksMap = storageTasksMap;
-        this.executiveStorageTree = storageTree;
-        this.taskLog = new ArrayList<>();
+    @Autowired
+    private StorageTasksMap storageTasksMap;
 
-        /* Having this in the super() constructor is best because... */
-        this.taskUUID = this.taskStorageTasksMap.addStorageTask(this);
+    @Autowired
+    private Storage storageTree;
+
+    @PostConstruct
+    private void init() {
+        this.taskExceptionHandler = new Handler();
+        this.taskUUID = this.storageTasksMap.addStorageTask(this);
         this.storageTaskAction = new StorageTaskAction();
         this.currentState = TaskState.EXECUTING;
+        this.taskLog = new ArrayList<>();
     }
 
     /* This is a simple enum to enable a stable communication with the frontend */
@@ -40,8 +48,8 @@ public class StorageTaskBase {
     
         private final String value;
         
-        TaskState(String v) {
-            this.value = v;
+        TaskState(String value) {
+            this.value = value;
         }
     
         @Override
@@ -51,15 +59,15 @@ public class StorageTaskBase {
     }
 
     /* This is the outward facing method, meant to be fired by the service shell or the controller */
-    public synchronized StorageServiceResponse execute(Map<String, Object> taskParameters) {
-        return this.getStorageServiceResponse();
+    public synchronized void execute(Map<String, Object> taskParameters) {
+        return;
     }
 
     public StorageServiceResponse getStorageServiceResponse() {
         if (this.getCurrentState() == TaskState.EXECUTING || this.getCurrentState() == TaskState.EXCEPTION) {
-            this.storageTaskAction.setTimeLeft(this.taskStorageTasksMap.scheduleStorageTaskRemoval(this.taskUUID));
+            this.storageTaskAction.setTimeLeft(this.storageTasksMap.scheduleStorageTaskRemoval(this.taskUUID));
         } else {
-            this.storageTaskAction.setTimeLeft(this.taskStorageTasksMap.removeStorageTask(this.taskUUID));
+            this.storageTaskAction.setTimeLeft(this.storageTasksMap.removeStorageTask(this.taskUUID));
         }
 
         return new StorageServiceResponse(this.taskUUID, this.currentState.toString(), this.storageTaskAction, this.taskExceptionHandler.getExceptionOptions());
@@ -74,7 +82,7 @@ public class StorageTaskBase {
         this.currentState = currentState;
     }
 
-    protected ExceptionHandler getTaskExceptionHandler() {
+    protected Handler getTaskExceptionHandler() {
         return this.taskExceptionHandler;
     }
 
@@ -82,8 +90,8 @@ public class StorageTaskBase {
         return this.storageTaskAction;
     }
 
-    protected StorageTree storageTreeExecute() {
-        return this.executiveStorageTree;
+    protected Storage storageTreeExecute() {
+        return this.storageTree;
     }
 
     protected TaskState getCurrentState() {

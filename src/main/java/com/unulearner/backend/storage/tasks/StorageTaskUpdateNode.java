@@ -3,31 +3,31 @@ package com.unulearner.backend.storage.tasks;
 import java.util.ArrayList;
 import java.util.Map;
 
-import com.unulearner.backend.storage.data.StorageTree;
+import org.springframework.context.annotation.Scope;
+import org.springframework.stereotype.Component;
+
 import com.unulearner.backend.storage.entities.StorageNode;
-import com.unulearner.backend.storage.repository.StorageTasksMap;
-import com.unulearner.backend.storage.responses.StorageServiceResponse;
-import com.unulearner.backend.storage.services.ExceptionHandler.OnExceptionOption;
-import com.unulearner.backend.storage.services.ExceptionHandler.OnExceptionOption.Parameter;
+import com.unulearner.backend.storage.tasks.exception.Option;
+import com.unulearner.backend.storage.tasks.exception.Option.Parameter;
 
 import java.io.IOException;
 
+@Component
+@Scope("prototype")
 public class StorageTaskUpdateNode extends StorageTaskBase {
-    public StorageTaskUpdateNode(StorageTree storageTree, StorageNode editedStorageNode, StorageTasksMap storageTasksMap) {
-        super(storageTree, storageTasksMap);
-
+    public StorageTaskUpdateNode initialize(StorageNode editedStorageNode) {
         final StorageTaskUpdateNodeAction storageTaskAction = new StorageTaskUpdateNodeAction(editedStorageNode);
 
-        storageTaskAction.setActionHeader("Update '%s' %s".formatted(editedStorageNode.getUrl(), editedStorageNode.isDirectory() ? "directory" : "file"));
-        storageTaskAction.setMessage("%s update task has been successfully initialized".formatted(editedStorageNode.isDirectory() ? "Directory" : "File"));
+        storageTaskAction.setActionHeader("Update '%s' %s".formatted(editedStorageNode.getUrl(), editedStorageNode.getIsDirectory() ? "directory" : "file"));
+        storageTaskAction.setMessage("%s update task has been successfully initialized".formatted(editedStorageNode.getIsDirectory() ? "Directory" : "File"));
     
         this.setStorageTaskAction(storageTaskAction);
         this.setCurrentState(TaskState.EXECUTING);
-        return;
+        return this;
     }
 
     @Override
-    public synchronized StorageServiceResponse execute(Map<String, Object> taskParameters) {
+    public synchronized void execute(Map<String, Object> taskParameters) {
         final StorageTaskUpdateNodeAction storageTaskAction = (StorageTaskUpdateNodeAction) this.getStorageTaskAction();
 
         final Boolean cancel = taskParameters != null ? (Boolean) taskParameters.get("cancel") : null;
@@ -35,17 +35,15 @@ public class StorageTaskUpdateNode extends StorageTaskBase {
         final Boolean onExceptionActionIsPersistent = taskParameters != null ? (Boolean) taskParameters.get("setAsDefault") : null;
 
         if (storageTaskAction.getUpdateSuccessful() == true) {
-            storageTaskAction.setMessage("%s '%s' update task finished successfully!".formatted(storageTaskAction.getTargetStorageNode().isDirectory() ? "Directory" : "File", storageTaskAction.getTargetStorageNode().getUrl()));
+            storageTaskAction.setMessage("%s '%s' update task finished successfully!".formatted(storageTaskAction.getTargetStorageNode().getIsDirectory() ? "Directory" : "File", storageTaskAction.getTargetStorageNode().getUrl()));
             this.setCurrentState(TaskState.COMPLETED);
-            
-            return this.getStorageServiceResponse();
+            return;
         }
 
         if (cancel != null && cancel == true) {
-            storageTaskAction.setMessage("%s '%s' update task was cancelled...".formatted(storageTaskAction.getTargetStorageNode().isDirectory() ? "Directory" : "File", storageTaskAction.getTargetStorageNode().getUrl()));
+            storageTaskAction.setMessage("%s '%s' update task was cancelled...".formatted(storageTaskAction.getTargetStorageNode().getIsDirectory() ? "Directory" : "File", storageTaskAction.getTargetStorageNode().getUrl()));
             this.setCurrentState(TaskState.CANCELLED);
-            
-            return this.getStorageServiceResponse();
+            return;
         }
 
         if (onExceptionAction != null) {
@@ -56,60 +54,55 @@ public class StorageTaskUpdateNode extends StorageTaskBase {
         while (storageTaskAction.getUpdateSuccessful() != true) {
             try {
                 final String exceptionType = storageTaskAction.getExceptionType();
-                final String exceptionAction = this.getTaskExceptionHandler().getOnExceptionAction(exceptionType, storageTaskAction.getTargetStorageNode());
+                final String exceptionAction = this.getTaskExceptionHandler().getOnExceptionAction(storageTaskAction.getTargetStorageNode(), exceptionType);
 
                 if (exceptionType != null) {
                     switch (exceptionType) {
                         case "IOException":
                             switch (exceptionAction) {
                                 case "skip":
-                                    storageTaskAction.setMessage("Update of '%s' %s was skipped...".formatted(storageTaskAction.getTargetStorageNode().getUrl(), storageTaskAction.getTargetStorageNode().isDirectory() ? "directory" : "file"));
+                                    storageTaskAction.setMessage("Update of '%s' %s was skipped...".formatted(storageTaskAction.getTargetStorageNode().getUrl(), storageTaskAction.getTargetStorageNode().getIsDirectory() ? "directory" : "file"));
                                     this.setCurrentState(TaskState.EXECUTING);
-                                    
-                                    return this.getStorageServiceResponse();
+                                    return;
                                 default:
-                                    final ArrayList<OnExceptionOption> onExceptionOptions = new ArrayList<>();
-                                    onExceptionOptions.add(new OnExceptionOption("skip", "Skip %s".formatted(storageTaskAction.getTargetStorageNode().isDirectory() ? "directory" : "file"),
+                                    final ArrayList<Option> onExceptionOptions = new ArrayList<>();
+                                    onExceptionOptions.add(new Option("skip", "Skip %s".formatted(storageTaskAction.getTargetStorageNode().getIsDirectory() ? "directory" : "file"),
                                         new Parameter("setAsDefault", "Set as Default".formatted(), "boolean")
                                     ));
 
-                                    storageTaskAction.setMessage("%s '%s' could not be updated due to a persistent I/O exception occurring".formatted(storageTaskAction.getTargetStorageNode().isDirectory() ? "Directory" : "File", storageTaskAction.getTargetStorageNode().getUrl()));
+                                    storageTaskAction.setMessage("%s '%s' could not be updated due to a persistent I/O exception occurring".formatted(storageTaskAction.getTargetStorageNode().getIsDirectory() ? "Directory" : "File", storageTaskAction.getTargetStorageNode().getUrl()));
                                     this.getTaskExceptionHandler().setExceptionOptions(onExceptionOptions);
                                     this.setCurrentState(TaskState.EXCEPTION);
-                                    
-                                    return this.getStorageServiceResponse();
+                                    return;
                             }
                         default:
                             switch (exceptionAction) {
                                 case "skip":
-                                    storageTaskAction.setMessage("Update of '%s' %s was skipped...".formatted(storageTaskAction.getTargetStorageNode().getUrl(), storageTaskAction.getTargetStorageNode().isDirectory() ? "directory" : "file"));
+                                    storageTaskAction.setMessage("Update of '%s' %s was skipped...".formatted(storageTaskAction.getTargetStorageNode().getUrl(), storageTaskAction.getTargetStorageNode().getIsDirectory() ? "directory" : "file"));
                                     this.setCurrentState(TaskState.EXECUTING);
-                                    
-                                    return this.getStorageServiceResponse();
+                                    return;
                                 default:
-                                    final ArrayList<OnExceptionOption> onExceptionOptions = new ArrayList<>();
-                                    onExceptionOptions.add(new OnExceptionOption("skip", "Skip %s".formatted(storageTaskAction.getTargetStorageNode().isDirectory() ? "directory" : "file"),
+                                    final ArrayList<Option> onExceptionOptions = new ArrayList<>();
+                                    onExceptionOptions.add(new Option("skip", "Skip %s".formatted(storageTaskAction.getTargetStorageNode().getIsDirectory() ? "directory" : "file"),
                                         new Parameter("setAsDefault", "Set as Default".formatted(), "boolean")
                                     ));
 
-                                    storageTaskAction.setMessage("%s '%s' could not be updated due to an unexpected exception occurring".formatted(storageTaskAction.getTargetStorageNode().isDirectory() ? "Directory" : "File", storageTaskAction.getTargetStorageNode().getUrl()));
+                                    storageTaskAction.setMessage("%s '%s' could not be updated due to an unexpected exception occurring".formatted(storageTaskAction.getTargetStorageNode().getIsDirectory() ? "Directory" : "File", storageTaskAction.getTargetStorageNode().getUrl()));
                                     this.getTaskExceptionHandler().setExceptionOptions(onExceptionOptions);
                                     this.setCurrentState(TaskState.EXCEPTION);
-                                    
-                                    return this.getStorageServiceResponse();
+                                    return;
                             }   
                     }
                 }
 
                 this.storageTreeExecute().updateStorageNode(storageTaskAction.getTargetStorageNode());
 
-                storageTaskAction.setMessage("%s '%s' has been updated successfully!".formatted(storageTaskAction.getTargetStorageNode().isDirectory() ? "Directory" : "File", storageTaskAction.getTargetStorageNode().getUrl()));
+                storageTaskAction.setMessage("%s '%s' has been updated successfully!".formatted(storageTaskAction.getTargetStorageNode().getIsDirectory() ? "Directory" : "File", storageTaskAction.getTargetStorageNode().getUrl()));
                 storageTaskAction.setUpdateSuccessful(true);
                 storageTaskAction.setExceptionMessage(null);
                 storageTaskAction.setExceptionType(null);
                 this.setCurrentState(TaskState.EXECUTING);
-
-                return this.getStorageServiceResponse();
+                return;
             } catch (IOException exception) {
                 storageTaskAction.setExceptionType(exception.getClass().getSimpleName());
                 storageTaskAction.setExceptionMessage(exception.getMessage());
@@ -118,8 +111,6 @@ public class StorageTaskUpdateNode extends StorageTaskBase {
                 storageTaskAction.setExceptionMessage(exception.getMessage());
             }
         }
-
-        return this.getStorageServiceResponse();
     }
 
     protected class StorageTaskUpdateNodeAction extends StorageTaskAction {

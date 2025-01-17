@@ -3,36 +3,36 @@ package com.unulearner.backend.storage.tasks;
 import java.util.ArrayList;
 import java.util.Map;
 
-import com.unulearner.backend.storage.data.StorageTree;
+import org.springframework.context.annotation.Scope;
+import org.springframework.stereotype.Component;
+
 import com.unulearner.backend.storage.entities.StorageNode;
-import com.unulearner.backend.storage.repository.StorageTasksMap;
-import com.unulearner.backend.storage.responses.StorageServiceResponse;
-import com.unulearner.backend.storage.services.ExceptionHandler.OnExceptionOption;
-import com.unulearner.backend.storage.services.ExceptionHandler.OnExceptionOption.Parameter;
+import com.unulearner.backend.storage.tasks.exception.Option;
+import com.unulearner.backend.storage.tasks.exception.Option.Parameter;
 
 import java.io.IOException;
 
+@Component
+@Scope("prototype")
 public class StorageTaskChmodNode extends StorageTaskBaseBatch {
-    private final StorageNode rootTargetStorageNode;
+    private StorageNode rootTargetStorageNode;
 
-    public StorageTaskChmodNode(StorageTree storageTree, StorageNode targetStorageNode, Short flags, Boolean taskIsRecursive, StorageTasksMap storageTasksMap) {
-        super(storageTree, storageTasksMap);
-
+    public StorageTaskChmodNode initialize(StorageNode targetStorageNode, String permissionsOptions, Boolean taskIsRecursive) {
         final Boolean updateTaskIsRecursive = taskIsRecursive != null ? taskIsRecursive : false;
         this.rootTargetStorageNode = targetStorageNode;
 
-        final StorageTaskChmodNodeCurrentAction storageTaskAction = new StorageTaskChmodNodeCurrentAction(null, targetStorageNode, flags, updateTaskIsRecursive);
+        final StorageTaskChmodNodeCurrentAction storageTaskAction = new StorageTaskChmodNodeCurrentAction(null, targetStorageNode, permissionsOptions, updateTaskIsRecursive);
 
-        storageTaskAction.setActionHeader("Update %s '%s' permission flags".formatted(this.rootTargetStorageNode.isDirectory() ? "directory" : "file", this.rootTargetStorageNode.getUrl()));
-        storageTaskAction.setMessage("%s permission flags update task has been successfully initialized".formatted(this.rootTargetStorageNode.isDirectory() ? "Directory" : "File"));
+        storageTaskAction.setActionHeader("Update %s '%s' permission flags".formatted(this.rootTargetStorageNode.getIsDirectory() ? "directory" : "file", this.rootTargetStorageNode.getUrl()));
+        storageTaskAction.setMessage("%s permission flags update task has been successfully initialized".formatted(this.rootTargetStorageNode.getIsDirectory() ? "Directory" : "File"));
     
         this.setStorageTaskAction(storageTaskAction);
         this.setCurrentState(TaskState.EXECUTING);
-        return;
+        return this;
     }
 
     @Override
-    public synchronized StorageServiceResponse execute(Map<String, Object> taskParameters) {
+    public synchronized void execute(Map<String, Object> taskParameters) {
         this.advanceStorageTask(); /* Will advance task only if the current task is either done or waiting for the children tasks to be done */
         final StorageTaskChmodNodeCurrentAction storageTaskCurrentAction = (StorageTaskChmodNodeCurrentAction) this.getStorageTaskAction();
 
@@ -40,18 +40,16 @@ public class StorageTaskChmodNode extends StorageTaskBaseBatch {
         final String onExceptionAction = taskParameters != null ? (String) taskParameters.get("onExceptionAction") : null;
         final Boolean onExceptionActionIsPersistent = taskParameters != null ? (Boolean) taskParameters.get("setAsDefault") : null;
 
-        if (storageTaskCurrentAction.getParentStorageTaskAction() == null && storageTaskCurrentAction.getTargetStorageNode().getId() != null) {
-            storageTaskCurrentAction.setMessage("%s '%s' permission flags update task finished successfully!".formatted(this.rootTargetStorageNode.isDirectory() ? "Directory" : "File", this.rootTargetStorageNode.getUrl()));
+        if (storageTaskCurrentAction.getParentStorageTaskAction() == null && storageTaskCurrentAction.getUpdateCommitted()) {
+            storageTaskCurrentAction.setMessage("%s '%s' permission flags update task finished successfully!".formatted(this.rootTargetStorageNode.getIsDirectory() ? "Directory" : "File", this.rootTargetStorageNode.getUrl()));
             this.setCurrentState(TaskState.COMPLETED);
-            
-            return this.getStorageServiceResponse();
+            return;
         }
 
         if (cancel != null && cancel == true) {
-            storageTaskCurrentAction.setMessage("%s '%s' permission flags update task was cancelled...".formatted(this.rootTargetStorageNode.isDirectory() ? "Directory" : "File", this.rootTargetStorageNode.getUrl()));
+            storageTaskCurrentAction.setMessage("%s '%s' permission flags update task was cancelled...".formatted(this.rootTargetStorageNode.getIsDirectory() ? "Directory" : "File", this.rootTargetStorageNode.getUrl()));
             this.setCurrentState(TaskState.CANCELLED);
-            
-            return this.getStorageServiceResponse();
+            return;
         }
 
         if (onExceptionAction != null) {
@@ -59,69 +57,71 @@ public class StorageTaskChmodNode extends StorageTaskBaseBatch {
         }
 
         storageTaskCurrentAction.incrementAttemptCounter();
-        while (storageTaskCurrentAction.getUpdateSuccessful() != true) {
+        while (storageTaskCurrentAction.getChmodified() != true || storageTaskCurrentAction.getUpdateCommitted() != true) {
             try {
                 final String exceptionType = storageTaskCurrentAction.getExceptionType();
-                final String exceptionAction = this.getTaskExceptionHandler().getOnExceptionAction(exceptionType, storageTaskCurrentAction.getTargetStorageNode());
+                final String exceptionAction = this.getTaskExceptionHandler().getOnExceptionAction(storageTaskCurrentAction.getTargetStorageNode(), exceptionType);
 
                 if (exceptionType != null) {
                     switch (exceptionType) {
                         case "IOException":
                             switch (exceptionAction) {
                                 case "skip":
-                                    storageTaskCurrentAction.setMessage("Permission flags update of '%s' %s was skipped...".formatted(storageTaskCurrentAction.getTargetStorageNode().getUrl(), storageTaskCurrentAction.getTargetStorageNode().isDirectory() ? "directory" : "file"));
+                                    storageTaskCurrentAction.setMessage("Permission flags update of '%s' %s was skipped...".formatted(storageTaskCurrentAction.getTargetStorageNode().getUrl(), storageTaskCurrentAction.getTargetStorageNode().getIsDirectory() ? "directory" : "file"));
                                     this.setCurrentState(TaskState.EXECUTING);
                                     this.skipStorageTaskCurrentAction();
                                     this.advanceStorageTask();
-                                    
-                                    return this.getStorageServiceResponse();
+                                    return;
                                 default:
-                                    final ArrayList<OnExceptionOption> onExceptionOptions = new ArrayList<>();
-                                    onExceptionOptions.add(new OnExceptionOption("skip", "Skip %s".formatted(storageTaskCurrentAction.getTargetStorageNode().isDirectory() ? "directory" : "file"),
+                                    final ArrayList<Option> onExceptionOptions = new ArrayList<>();
+                                    onExceptionOptions.add(new Option("skip", "Skip %s".formatted(storageTaskCurrentAction.getTargetStorageNode().getIsDirectory() ? "directory" : "file"),
                                         new Parameter("setAsDefault", "Set as Default".formatted(), "boolean")
                                     ));
 
-                                    storageTaskCurrentAction.setMessage("%s '%s' permission flags could not be updated due to a persistent I/O exception".formatted(storageTaskCurrentAction.getTargetStorageNode().isDirectory() ? "Directory" : "File", storageTaskCurrentAction.getTargetStorageNode().getUrl()));
+                                    storageTaskCurrentAction.setMessage("%s '%s' permission flags could not be updated due to a persistent I/O exception".formatted(storageTaskCurrentAction.getTargetStorageNode().getIsDirectory() ? "Directory" : "File", storageTaskCurrentAction.getTargetStorageNode().getUrl()));
                                     this.getTaskExceptionHandler().setExceptionOptions(onExceptionOptions);
                                     this.setCurrentState(TaskState.EXCEPTION);
-                                    
-                                    return this.getStorageServiceResponse();
+                                    return;
                             }
                         default:
                             switch (exceptionAction) {
                                 case "skip":
-                                    storageTaskCurrentAction.setMessage("Permission flags update of '%s' %s was skipped...".formatted(storageTaskCurrentAction.getTargetStorageNode().getUrl(), storageTaskCurrentAction.getTargetStorageNode().isDirectory() ? "directory" : "file"));
+                                    storageTaskCurrentAction.setMessage("Permission flags update of '%s' %s was skipped...".formatted(storageTaskCurrentAction.getTargetStorageNode().getUrl(), storageTaskCurrentAction.getTargetStorageNode().getIsDirectory() ? "directory" : "file"));
                                     this.setCurrentState(TaskState.EXECUTING);
                                     this.skipStorageTaskCurrentAction();
                                     this.advanceStorageTask();
-                                    
-                                    return this.getStorageServiceResponse();
+                                    return;
                                 default:
-                                    final ArrayList<OnExceptionOption> onExceptionOptions = new ArrayList<>();
-                                    onExceptionOptions.add(new OnExceptionOption("skip", "Skip %s".formatted(storageTaskCurrentAction.getTargetStorageNode().isDirectory() ? "directory" : "file"),
+                                    final ArrayList<Option> onExceptionOptions = new ArrayList<>();
+                                    onExceptionOptions.add(new Option("skip", "Skip %s".formatted(storageTaskCurrentAction.getTargetStorageNode().getIsDirectory() ? "directory" : "file"),
                                         new Parameter("setAsDefault", "Set as Default".formatted(), "boolean")
                                     ));
 
-                                    storageTaskCurrentAction.setMessage("%s '%s' permission flags could not be updated due to an unexpected exception".formatted(storageTaskCurrentAction.getTargetStorageNode().isDirectory() ? "Directory" : "File", storageTaskCurrentAction.getTargetStorageNode().getUrl()));
+                                    storageTaskCurrentAction.setMessage("%s '%s' permission flags could not be updated due to an unexpected exception".formatted(storageTaskCurrentAction.getTargetStorageNode().getIsDirectory() ? "Directory" : "File", storageTaskCurrentAction.getTargetStorageNode().getUrl()));
                                     this.getTaskExceptionHandler().setExceptionOptions(onExceptionOptions);
                                     this.setCurrentState(TaskState.EXCEPTION);
-                                    
-                                    return this.getStorageServiceResponse();
+                                    return;
                             }   
                     }
                 }
 
-                this.storageTreeExecute().chmodStorageNode(storageTaskCurrentAction.getTargetStorageNode(), storageTaskCurrentAction.getPermissionFlags());
+                if (storageTaskCurrentAction.getChmodified() != true) {
+                    this.storageTreeExecute().chmodStorageNode(storageTaskCurrentAction.getTargetStorageNode(), storageTaskCurrentAction.getPermissionsOptions());
+                    storageTaskCurrentAction.setChmodified(true);
+                }
 
-                storageTaskCurrentAction.setMessage("%s '%s' permission flags have been updated successfully!".formatted(storageTaskCurrentAction.getTargetStorageNode().isDirectory() ? "Directory" : "File", storageTaskCurrentAction.getTargetStorageNode().getUrl()));
-                storageTaskCurrentAction.setUpdateSuccessful(true);
+                if (storageTaskCurrentAction.getUpdateCommitted() != true) {
+                    this.storageTreeExecute().publishStorageNode(storageTaskCurrentAction.getTargetStorageNode());
+                    storageTaskCurrentAction.setUpdateCommitted(true);
+                }
+
+                storageTaskCurrentAction.setMessage("%s '%s' permission flags have been updated successfully!".formatted(storageTaskCurrentAction.getTargetStorageNode().getIsDirectory() ? "Directory" : "File", storageTaskCurrentAction.getTargetStorageNode().getUrl()));
                 storageTaskCurrentAction.setExceptionMessage(null);
                 storageTaskCurrentAction.setExceptionType(null);
                 this.setCurrentState(TaskState.EXECUTING);
                 this.advanceStorageTask();
-                
-                return this.getStorageServiceResponse();
-            } catch (IOException exception) {
+                return;
+            } catch (IOException exception) { /* TODO: catch some actual fucking exceptions! */
                 storageTaskCurrentAction.setExceptionType(exception.getClass().getSimpleName());
                 storageTaskCurrentAction.setExceptionMessage(exception.getMessage());
             } catch (Exception exception) {
@@ -129,8 +129,6 @@ public class StorageTaskChmodNode extends StorageTaskBaseBatch {
                 storageTaskCurrentAction.setExceptionMessage(exception.getMessage());
             }
         }
-
-        return this.getStorageServiceResponse();
     }
 
     @Override
@@ -146,7 +144,7 @@ public class StorageTaskChmodNode extends StorageTaskBaseBatch {
     protected void advanceStorageTask() {
         StorageTaskChmodNodeCurrentAction storageTaskCurrentAction = (StorageTaskChmodNodeCurrentAction) this.getStorageTaskAction();
 
-        if (!storageTaskCurrentAction.getUpdateSuccessful()) {
+        if (!storageTaskCurrentAction.getChmodified() || !storageTaskCurrentAction.getUpdateCommitted()) {
             return;
         }
 
@@ -167,39 +165,49 @@ public class StorageTaskChmodNode extends StorageTaskBaseBatch {
     }
 
     protected class StorageTaskChmodNodeCurrentAction extends StorageTaskCurrentAction {
-        private Short permissionFlags;
-        private Boolean updateSuccessful;
+        private Boolean chmodified;
+        private Boolean updateCommitted;
+        private String permissionsOptions;
         private StorageNode targetStorageNode;
 
-        protected StorageTaskChmodNodeCurrentAction(StorageTaskChmodNodeCurrentAction parentStorageTaskAction, StorageNode editedStorageNode, Short flags, Boolean taskIsRecursive) {
+        protected StorageTaskChmodNodeCurrentAction(StorageTaskChmodNodeCurrentAction parentStorageTaskAction, StorageNode targetStorageNode, String permissionsOptions, Boolean taskIsRecursive) {
             super(parentStorageTaskAction);
 
-            this.permissionFlags = flags;
-            this.updateSuccessful = false;
-            this.targetStorageNode = editedStorageNode;
+            this.chmodified = false;
+            this.updateCommitted = false;
+            this.permissionsOptions = permissionsOptions;
+            this.targetStorageNode = targetStorageNode;
 
-            if (taskIsRecursive == true && this.targetStorageNode.isDirectory()) {
-                for (StorageNode childNode : targetStorageNode.getChildren()) {
-                    this.getChildStorageTaskActions().add(new StorageTaskChmodNodeCurrentAction(this, childNode, flags, taskIsRecursive));
+            if (taskIsRecursive == true && this.targetStorageNode.getIsDirectory()) {
+                for (StorageNode childNode : this.targetStorageNode.getChildren()) {
+                    this.getChildStorageTaskActions().add(new StorageTaskChmodNodeCurrentAction(this, childNode, permissionsOptions, taskIsRecursive));
                     this.getChildStorageTaskActions().previous(); /* Required because iterator pushes forward on .add() which is an expected but unwanted behavior */
                 }
             }
         }
 
-        public Short getPermissionFlags() {
-            return this.permissionFlags;
+        public Boolean getChmodified() {
+            return this.chmodified;
         }
 
-        public void setPermissionFlags(Short permissionFlags) {
-            this.permissionFlags = permissionFlags;
+        public void setChmodified(Boolean chmodified) {
+            this.chmodified = chmodified;
         }
 
-        public Boolean getUpdateSuccessful() {
-            return this.updateSuccessful;
+        public Boolean getUpdateCommitted() {
+            return this.updateCommitted;
         }
 
-        public void setUpdateSuccessful(Boolean updateSuccessful) {
-            this.updateSuccessful = updateSuccessful;
+        public void setUpdateCommitted(Boolean updateCommitted) {
+            this.updateCommitted = updateCommitted;
+        }
+
+        public String getPermissionsOptions() {
+            return this.permissionsOptions;
+        }
+
+        public void setPermissionsOptions(String permissionsOptions) {
+            this.permissionsOptions = permissionsOptions;
         }
 
         public StorageNode getTargetStorageNode() {
