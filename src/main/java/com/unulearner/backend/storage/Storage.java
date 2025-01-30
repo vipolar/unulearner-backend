@@ -12,8 +12,8 @@ import java.util.ArrayList;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Deque;
+import java.util.List;
 import java.util.UUID;
 import java.io.File;
 
@@ -21,179 +21,192 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
-import com.unulearner.backend.storage.interfaces.StorageSecurityInterface;
-import com.unulearner.backend.storage.interfaces.StorageServiceInterface;
-import com.unulearner.backend.storage.entities.StorageNode;
-import com.unulearner.backend.storage.miscellaneous.Holder;
-import com.unulearner.backend.storage.extensions.NodePath;
+import com.unulearner.backend.storage.model.Entry;
+import com.unulearner.backend.storage.formalization.EntryPath;
+import com.unulearner.backend.storage.specification.StorageInterface;
+import com.unulearner.backend.storage.specification.SecurityInterface;
 
-import com.unulearner.backend.storage.exceptions.NodeInsufficientPermissionsException;
-import com.unulearner.backend.storage.exceptions.NodeTypeInDatabaseMismatchException;
-import com.unulearner.backend.storage.exceptions.NodeToParentRelationsException;
-import com.unulearner.backend.storage.exceptions.NodeTypeNotSupportedException;
-import com.unulearner.backend.storage.exceptions.NodeIsInaccessibleException;
-import com.unulearner.backend.storage.exceptions.NodePublishingRaceException;
-import com.unulearner.backend.storage.exceptions.StorageServiceException;
+import com.unulearner.backend.storage.exceptions.StorageEntryException;
+import com.unulearner.backend.storage.exceptions.entry.EntryNotFoundException;
+import com.unulearner.backend.storage.exceptions.entry.EntryInaccessibleException;
+import com.unulearner.backend.storage.exceptions.entry.EntryPublishingRaceException;
+import com.unulearner.backend.storage.exceptions.entry.EntryToParentRelationException;
+import com.unulearner.backend.storage.exceptions.entry.EntryPhysicalCreationException;
+import com.unulearner.backend.storage.exceptions.entry.EntryTypeNotSupportedException;
+import com.unulearner.backend.storage.exceptions.entry.EntryTypeInDatabaseMismatchException;
+import com.unulearner.backend.storage.exceptions.entry.EntryInsufficientPermissionsException;
 
 import java.nio.file.DirectoryNotEmptyException;
 import java.nio.file.FileAlreadyExistsException;
 import java.security.InvalidParameterException;
-import java.util.NoSuchElementException;
 import java.io.IOException;
 
 @Service
 public class Storage {
-    private static final Logger storageLogger = LoggerFactory.getLogger(Storage.class);
-    private final StorageSecurityInterface storageSecurityInterface;
-    private final StorageServiceInterface storageServiceInterface;
-    private final HashMap<UUID, StorageNode> storageHashMap;
-    private final NodePath storageRootDirectoryPath;
-    private final StorageNode storageRootNode;
+    private final Logger logger = LoggerFactory.getLogger(Storage.class);
+    private final SecurityInterface securityInterface;
+    private final StorageInterface storageInterface;
+    private final HashMap<UUID, Entry> entryCache;
+    private final EntryPath rootEntryPath;
+    private final Entry rootEntry;
 
-    public Storage(StorageSecurityInterface storageSecurityInterface, StorageServiceInterface storageServiceInterface) {
-        this.storageSecurityInterface = storageSecurityInterface;
-        this.storageServiceInterface = storageServiceInterface;
-        this.storageHashMap = new HashMap<UUID, StorageNode>();
+    public Storage(SecurityInterface securityInterface, StorageInterface storageInterface) {
+        final Deque<Entry> directoryStackDeque = new ArrayDeque<Entry>();
 
-        try {
-            this.storageRootDirectoryPath = this.storageServiceInterface.getRootDirectory();
-        } catch (Exception exception) {
-            /* If it got here then we have no choice but to crash it! */
-            throw new RuntimeException("Fatal error: %s\nFailed to build storage tree.\nExiting the application...".formatted(exception.getMessage()));
-        }
+        this.entryCache = new HashMap<UUID, Entry>();
+        this.securityInterface = securityInterface;
+        this.storageInterface = storageInterface;
 
         try {
-            final NodePath rootDirectoryPath = this.storageRootDirectoryPath;
-            final HashMap<UUID, StorageNode> storageHashMap = this.storageHashMap;
-            final Holder<StorageNode> rootStorageNodeHolder = new Holder<StorageNode>();
-            final Deque<StorageNode> rootDirectoryNodeDeque = new ArrayDeque<StorageNode>();
-
-            Files.walkFileTree(rootDirectoryPath.getPath(), new SimpleFileVisitor<Path>() {
+            this.rootEntryPath = this.storageInterface.getRootDirectoryPath();
+            Files.walkFileTree(rootEntryPath.getPath(), new SimpleFileVisitor<Path>() {
                 @Override
-                public FileVisitResult preVisitDirectory(Path directoryPath, BasicFileAttributes attrs) {
+                public FileVisitResult preVisitDirectory(Path dirPath, BasicFileAttributes attrs) {
                     try {
-                        final NodePath directoryNodePath = rootDirectoryPath.resolveFromRoot(directoryPath);
-                        final StorageNode parentStorageNode = rootDirectoryNodeDeque.peekLast();
-                        /* Fuck Java, this is final! */ StorageNode targetStorageNode;
+                        final EntryPath dirEntryPath = rootEntryPath.resolveFromRoot(dirPath);
+                        final Entry stackLastEntry = directoryStackDeque.peekLast();
+                        /* Fuck Java, this is final! */ Entry entry = null;
 
-                        if (!directoryNodePath.isValidDirectory()) {
-                            throw new NodeIsInaccessibleException("Directory is inaccessible.".formatted());
+                        if (!dirEntryPath.isValidDirectory()) {
+                            throw new EntryInaccessibleException("Directory '%s' is inaccessible".formatted(dirEntryPath.getRelativePath().toString()));
+                        }
+
+                        if (stackLastEntry == null) { /* null parent is only allowed in the case of the root */
+                            if (!entryCache.isEmpty()) {
+                                throw new RuntimeException("Directory '%s' cannot be root as the root already exists".formatted(dirEntryPath.getPath().toString()));
+                            }
+
+                            if (!rootEntryPath.equals(dirEntryPath)) {
+                                throw new RuntimeException("Directory '%s' cannot be root as it doesn't match the provided root path".formatted(dirEntryPath.getPath().toString()));
+                            }
+
+                            try {
+                                entry = storageInterface.searchEntryByURL(dirEntryPath.getRelativePath().toString()).orElseThrow(() -> new EntryNotFoundException("Root entry not found".formatted(dirPath.toString()))).setEntryPath(dirEntryPath);
+                            } catch (EntryNotFoundException exception) {
+                                logger.info("Database entry for the root directory not found. Creating root directory database entry...".formatted());
+                                entry = storageInterface.persistEntry(storageInterface.createRootEntry(rootEntryPath));
+                            } catch (Exception exception) {
+                                throw new RuntimeException(exception.getMessage(), exception.getCause());
+                            }
+
+                            entryCache.put(entry.getId(), entry);
+                            directoryStackDeque.offer(entry);
+
+                            logger.info("Storage root has been successfully initialized at %s".formatted(dirPath.toString()));
+                            return FileVisitResult.CONTINUE;
                         }
 
                         try {
-                            targetStorageNode = storageServiceInterface.retrieveStorageNodeByURL(directoryNodePath.getRelativePath().toString()).setNodePath(directoryNodePath);
-                            if (parentStorageNode != null && targetStorageNode.getParent() != null && !parentStorageNode.getId().equals(targetStorageNode.getParent().getId())) {
-                                throw new NodeToParentRelationsException("Directory is supposedly a child of directory '%s' but the relationship is not mirrored on the persistent level".formatted(parentStorageNode.getUrl()));
+                            entry = storageInterface.searchEntryByURL(dirEntryPath.getRelativePath().toString()).orElseThrow(() -> new EntryNotFoundException("Database entry for directory '%s' not found".formatted(dirPath.toString()))).setEntryPath(dirEntryPath);
+
+                            if (!stackLastEntry.getId().equals(entry.getParent().getId())) {
+                                throw new EntryToParentRelationException("Directory is supposedly a child of directory '%s' but the relationship is not mirrored on the persistent level".formatted(stackLastEntry.getUrl()));
                             }
 
-                            if (targetStorageNode.getIsDirectory() == null || targetStorageNode.getIsDirectory() != true) {
-                                throw new NodeTypeInDatabaseMismatchException("Directory '%s' type doesn't match the type persisted to the database".formatted(targetStorageNode.getUrl()));
+                            if (entry.getIsDirectory() == null || entry.getIsDirectory() != true) {
+                                throw new EntryTypeInDatabaseMismatchException("Directory '%s' type doesn't match the type persisted to the database".formatted(entry.getUrl()));
                             }
 
-                            targetStorageNode.setChildren(storageServiceInterface.retrieveChildrenStorageNodes(targetStorageNode));
-                            if (!targetStorageNode.getChildren().isEmpty()) { /* Sorting at this stage and then inserting accordingly seems like a better idea than throwing it all in together and sorting on postDirectoryVisit */
-                                Collections.sort(targetStorageNode.getChildren(), storageServiceInterface.getStorageComparator());
+                            entry.setChildren(storageInterface.retrieveChildEntries(entry));
+                            if (!entry.getChildren().isEmpty()) { /* Sorting at this stage and then inserting accordingly seems like a better idea than throwing it all in together and sorting on postDirectoryVisit */
+                                Collections.sort(entry.getChildren(), storageInterface.getStorageComparator());
                             }
-                        } catch (NoSuchElementException exception) {
-                            storageLogger.warn("Database entry for '%s' couldn't be found and has to be created on the spot".formatted(directoryNodePath.getRelativePath().toString()));
-                            if (parentStorageNode != null) {
-                                targetStorageNode = storageServiceInterface.saveStorageNode(storageServiceInterface.createNewStorageNode(parentStorageNode, new ArrayList<>(), directoryNodePath, null, null, null));
-                            } else {
-                                targetStorageNode = storageServiceInterface.saveStorageNode(storageServiceInterface.createRootStorageNode(new ArrayList<>(), rootDirectoryPath));
+                        } catch (StorageEntryException exception) {
+                            if (entry != null && exception instanceof EntryTypeInDatabaseMismatchException) {
+                                //TODO: do something with the old entry...
                             }
-                        } catch (NodeTypeInDatabaseMismatchException exception) {
-                            /* TODO: handle and log exception */
-                            targetStorageNode = storageServiceInterface.saveStorageNode(storageServiceInterface.createNewStorageNode(parentStorageNode, new ArrayList<>(), directoryNodePath, null, null, null));
-                        } catch (NodeToParentRelationsException exception) {
-                            /* TODO: handle and log exception */
-                            targetStorageNode = storageServiceInterface.saveStorageNode(storageServiceInterface.createNewStorageNode(parentStorageNode, new ArrayList<>(), directoryNodePath, null, null, null));
+
+                            logger.info("%s: %s. Creating new database entry...".formatted(exception.getClass().getSimpleName(), exception.getMessage()));
+                            entry = storageInterface.persistEntry(storageInterface.createNewEntry(stackLastEntry, new ArrayList<>(), dirEntryPath, null, null, null));
                         } catch (Exception exception) {
-                            /* TODO: handle and log exception */
-                            targetStorageNode = storageServiceInterface.saveStorageNode(storageServiceInterface.createNewStorageNode(parentStorageNode, new ArrayList<>(), directoryNodePath, null, null, null));
+                            throw new Exception(exception.getMessage(), exception.getCause());
                         }
 
-                        if (parentStorageNode != null) { /* null parent is only allowed in the case of the root node. No other node will go past the pre-commit check with its parent set to null */
-                            final Integer iNode = Collections.binarySearch(parentStorageNode.getChildren(), targetStorageNode, storageServiceInterface.getStorageComparator());
-
-                            if (iNode >= 0) {
-                                parentStorageNode.getChildren().set(iNode, targetStorageNode);
-                            } else {
-                                parentStorageNode.getChildren().add((-iNode - 1), targetStorageNode);
-                            }
+                        final Integer iEntry = Collections.binarySearch(stackLastEntry.getChildren(), entry, storageInterface.getStorageComparator());
+                        if (iEntry >= 0) {
+                            stackLastEntry.getChildren().set(iEntry, entry);
+                        } else {
+                            stackLastEntry.getChildren().add((-iEntry - 1), entry);
                         }
 
-                        if (storageHashMap.put(targetStorageNode.getId(), targetStorageNode) != null) {
-                            throw new FileAlreadyExistsException("Directory node already exists on the storage tree hashmap!".formatted(directoryNodePath.getRelativePath().toString()));
+
+                        if (entryCache.put(entry.getId(), entry) != null) {
+                            throw new RuntimeException("Directory '%s' already exists in the storage hashmap!".formatted(dirEntryPath.getRelativePath().toString()));
                         }
 
-                        rootDirectoryNodeDeque.offer(targetStorageNode);
+                        directoryStackDeque.offer(entry);
                     } catch (Exception exception) {
-                        storageLogger.warn("Failed to add directory '%s' to the storage tree: %s".formatted(directoryPath.toString(), exception.getMessage()));
+                        if (exception instanceof RuntimeException) {
+                            throw new RuntimeException(exception.getMessage(), exception.getCause());
+                        }
+
+                        logger.warn("Failed to add directory '%s' to the storage tree: %s".formatted(dirPath.toString(), exception.getMessage()));
                         return FileVisitResult.SKIP_SUBTREE;
                     }
 
-                    storageLogger.info("Directory '%s' was successfully added to the storage tree".formatted(directoryPath.toString()));
+                    logger.info("Directory '%s' was successfully added to the storage tree".formatted(dirPath.toString()));
                     return FileVisitResult.CONTINUE;
                 }
 
                 @Override
                 public FileVisitResult visitFile(Path filePath, BasicFileAttributes attrs) {
                     try {
-                        final NodePath fileNodePath = rootDirectoryPath.resolveFromRoot(filePath);
-                        final StorageNode parentStorageNode = rootDirectoryNodeDeque.peekLast();
-                        /* Fuck Java, this is final! */ StorageNode targetStorageNode;
+                        final EntryPath fileEntryPath = rootEntryPath.resolveFromRoot(filePath);
+                        final Entry stackLastEntry = directoryStackDeque.peekLast();
+                        /* Fuck Java, this is final! */ Entry entry = null;
 
-                        if (!fileNodePath.isValidFile()) {
-                            throw new NodeIsInaccessibleException("File is inaccessible.".formatted());
+                        if (!fileEntryPath.isValidFile()) {
+                            throw new EntryInaccessibleException("File '%s' is inaccessible".formatted(fileEntryPath.getRelativePath().toString()));
                         }
 
                         try {
-                            targetStorageNode = storageServiceInterface.retrieveStorageNodeByURL(fileNodePath.getRelativePath().toString()).setNodePath(fileNodePath);
-                            if (!parentStorageNode.getId().equals(targetStorageNode.getParent().getId())) {
-                                throw new NodeToParentRelationsException("File is supposedly a child of directory '%s' but the relationship is not mirrored on the persistent level".formatted(parentStorageNode.getUrl()));
+                            entry = storageInterface.searchEntryByURL(fileEntryPath.getRelativePath().toString()).orElseThrow(() -> new EntryNotFoundException("Database entry for file '%s' not found".formatted(filePath.toString()))).setEntryPath(fileEntryPath);
+
+                            if (!stackLastEntry.getId().equals(entry.getParent().getId())) {
+                                throw new EntryToParentRelationException("File is supposedly a child of directory '%s' but the relationship is not mirrored on the persistent level".formatted(stackLastEntry.getUrl()));
                             }
 
-                            if (targetStorageNode.getIsDirectory() == null || targetStorageNode.getIsDirectory() != false) {
-                                throw new NodeTypeInDatabaseMismatchException("File '%s' type doesn't match the type persisted to the database".formatted(targetStorageNode.getUrl()));
+                            if (entry.getIsDirectory() == null || entry.getIsDirectory() != false) {
+                                throw new EntryTypeInDatabaseMismatchException("File '%s' type doesn't match the type persisted to the database".formatted(entry.getUrl()));
                             }
-                        } catch (NoSuchElementException exception) {
-                            storageLogger.warn("Database entry for '%s' couldn't be found and has to be created on the spot".formatted(fileNodePath.getRelativePath().toString()));
-                            targetStorageNode = storageServiceInterface.saveStorageNode(storageServiceInterface.createNewStorageNode(parentStorageNode, null, fileNodePath, null, null, null));
-                        } catch (NodeTypeInDatabaseMismatchException exception) {
-                            /* TODO: handle and log exception */
-                            targetStorageNode = storageServiceInterface.saveStorageNode(storageServiceInterface.createNewStorageNode(parentStorageNode, null, fileNodePath, null, null, null));
-                        } catch (NodeToParentRelationsException exception) {
-                            /* TODO: handle and log exception */
-                            targetStorageNode = storageServiceInterface.saveStorageNode(storageServiceInterface.createNewStorageNode(parentStorageNode, null, fileNodePath, null, null, null));
+                        } catch (StorageEntryException exception) {
+                            if (entry != null && exception instanceof EntryTypeInDatabaseMismatchException) {
+                                //TODO: do something with the old entry...
+                            }
+
+                            logger.info("%s: %s. Creating new database entry...".formatted(exception.getClass().getSimpleName(), exception.getMessage()));
+                            entry = storageInterface.persistEntry(storageInterface.createNewEntry(stackLastEntry, null, fileEntryPath, null, null, null));
                         } catch (Exception exception) {
-                            /* TODO: handle and log exception */
-                            targetStorageNode = storageServiceInterface.saveStorageNode(storageServiceInterface.createNewStorageNode(parentStorageNode, null, fileNodePath, null, null, null));
+                            throw new Exception(exception.getMessage(), exception.getCause());
                         }     
                         
-                        final Integer iNode = Collections.binarySearch(parentStorageNode.getChildren(), targetStorageNode, storageServiceInterface.getStorageComparator());
-                        if (iNode >= 0) {
-                            parentStorageNode.getChildren().set(iNode, targetStorageNode);
+                        final Integer iEntry = Collections.binarySearch(stackLastEntry.getChildren(), entry, storageInterface.getStorageComparator());
+                        if (iEntry >= 0) {
+                            stackLastEntry.getChildren().set(iEntry, entry);
                         } else {
-                            parentStorageNode.getChildren().add((-iNode - 1), targetStorageNode);
+                            stackLastEntry.getChildren().add((-iEntry - 1), entry);
                         }
 
-                        if (storageHashMap.put(targetStorageNode.getId(), targetStorageNode) != null) {
-                            throw new FileAlreadyExistsException("File node already exists on the storage tree hashmap.".formatted());
+                        if (entryCache.put(entry.getId(), entry) != null) {
+                            throw new RuntimeException("File '%s' already exists in the storage hashmap".formatted(fileEntryPath.getRelativePath().toString()));
                         }
-
                     } catch (Exception exception) {
-                        storageLogger.warn("Failed to add file '%s' to the storage tree: %s".formatted(filePath.toString(), exception.getMessage()));
+                        if (exception instanceof RuntimeException) {
+                            throw new RuntimeException(exception.getMessage(), exception.getCause());
+                        }
+
+                        logger.warn("Failed to add file '%s' to the storage tree: %s".formatted(filePath.toString(), exception.getMessage()));
                         return FileVisitResult.CONTINUE;
                     }
 
-                    storageLogger.info("File '%s' was successfully added to the storage tree.".formatted(filePath.toString()));
+                    logger.info("File '%s' was successfully added to the storage tree".formatted(filePath.toString()));
                     return FileVisitResult.CONTINUE;
                 }
 
                 @Override
                 public FileVisitResult visitFileFailed(Path filePath, IOException exception) {
                     if (exception != null) {
-                        storageLogger.warn("Failed to visit file '%s': %s".formatted(filePath.toString(), exception.getMessage()));
+                        logger.warn("Failed to visit file '%s': %s".formatted(filePath.toString(), exception.getMessage()));
                         return FileVisitResult.CONTINUE;
                     }
 
@@ -201,336 +214,349 @@ public class Storage {
                 }
 
                 @Override
-                public FileVisitResult postVisitDirectory(Path directoryPath, IOException exception) {
+                public FileVisitResult postVisitDirectory(Path dirPath, IOException exception) {
                     if (exception != null) {
-                        storageLogger.warn("Failed to visit directory '%s': %s".formatted(directoryPath.toString(), exception.getMessage()));
+                        logger.warn("Failed to traverse the '%s' directory: %s".formatted(dirPath.toString(), exception.getMessage()));
                         return FileVisitResult.CONTINUE;
                     }
 
-                    final StorageNode directoryStorageNode = rootDirectoryNodeDeque.pollLast();
+                    final Entry dirEntry = directoryStackDeque.peekLast();
                     long fileCount = 0, directoryCount = 0, visitedCount = 0, accessibleCount = 0;
-                    for (StorageNode node : directoryStorageNode.getChildren()) {
+                    for (Entry entry : dirEntry.getChildren()) {
                         visitedCount++;
 
-                        if (node.getIsAccessible()) {
+                        if (entry.getIsAccessible()) {
                             accessibleCount++;
                         }
 
-                        if (node.getIsDirectory()) {
+                        if (entry.getIsDirectory()) {
                             directoryCount++;
                         } else {
                             fileCount++;
                         }
                     }
 
-                    if (directoryStorageNode.getParent() == null) {
-                        rootStorageNodeHolder.setValue(directoryStorageNode);
+                    if (directoryStackDeque.size() > 1) {
+                        directoryStackDeque.removeLast();
                     }
 
-                    storageLogger.info("Directory '%s' visited successfully. Total nodes: %d. Directory nodes: %d. File nodes: %d. Accessible nodes: %d.".formatted(directoryPath.toString(), visitedCount, directoryCount, fileCount, accessibleCount));
+                    logger.info("Directory '%s' visited successfully. Total entries: %d. Directory entries: %d. File entries: %d. Accessible entries: %d".formatted(dirPath.toString(), visitedCount, directoryCount, fileCount, accessibleCount));
                     return FileVisitResult.CONTINUE;
                 }
             });
 
-            if ((this.storageRootNode = rootStorageNodeHolder.getValue()) == null) {
-                throw new RuntimeException("No discernable root node could be found on the tree.".formatted());
+            if ((this.rootEntry = directoryStackDeque.pollLast()) == null) {
+                throw new RuntimeException("No discernable root entry was detected".formatted());
             }
 
-            if (!rootDirectoryNodeDeque.isEmpty()) {
-                throw new RuntimeException("%d unhandled directories left in the deque.".formatted(rootDirectoryNodeDeque.size()));
+            if (!directoryStackDeque.isEmpty()) {
+                throw new RuntimeException("%d unhandled directories left in the deque".formatted(directoryStackDeque.size()));
             }
         } catch (Exception exception) {
-            /* If it got here then we have no choice but to crash it! */
-            throw new RuntimeException("Fatal error: %s\nFailed to build storage tree.\nExiting the application...".formatted(exception.getMessage()));
+            /* If it got to here then we've got no choice but to crash it! */
+            logger.error("Fatal error: %s".formatted(exception.getMessage()));
+            logger.error("Failed to build the storage tree".formatted());
+            logger.error("Crashing the application...".formatted());
+
+            throw new RuntimeException(exception.getMessage(), exception.getCause());
         }
     }
 
     /**
-     * <p>Publish a node on the working tree and commit it to the database (update if it is already there)</p>
-     * @param targetStorageNode node to be published or updated
-     * @return published (or updated) node
-     * @throws InvalidParameterException if any of the provided parameters are invalid
-     * @throws FileAlreadyExistsException oh boy this is a doozy one...
-     * @throws Exception if anything not covered above was thrown
+     * Retrieves the root entry of the storage tree.
+     *
+     * The root entry serves as the top-level directory and cannot be deleted or modified 
+     * in the same way as other entries.
+     *
+     * @return The root {@code Entry} of the storage tree.
      */
-    public StorageNode publishStorageNode(StorageNode targetStorageNode) throws Exception {
-        if (targetStorageNode == null || targetStorageNode.getNodePath() == null) {
-            throw new InvalidParameterException("Target node is invalid.".formatted());
-        } else if (targetStorageNode.getParent() == null) {
-            throw new InvalidParameterException("Root node is not targetable.".formatted());
+    public Entry getRootEntry() {
+        return this.rootEntry;
+    }
+
+    /**
+     * Retrieves an entry from the quick-access cache by its UUID.
+     *
+     * This method checks the in-memory cache for a matching entry. If no match is found,
+     * it returns {@code null} without querying persistent storage.
+     *
+     * @param targetEntryUUID The UUID of the entry to retrieve.
+     * @return The matching {@code Entry} if found, or {@code null} if no match exists.
+     */
+    public Entry retrieveEntry(UUID targetEntryUUID) {
+        return this.entryCache.get(targetEntryUUID);
+    }
+
+    /**
+     * Recovers an existing entry by name, whether it exists as a full-blown entry 
+     * in the tree or as a physical file on the drive.
+     * 
+     * If the entry is already catalogued in the parent entry, it is returned.
+     * If it exists physically but is not catalogued, a new entry is created and linked.
+     *
+     * @param targetEntryName The name of the entry to search for within the parent directory.
+     * @param destinationEntry The existing parent entry to which the recovered entry will be attached.
+     * @return A newly created entry representing the recovered file or directory.
+     * @throws InvalidParameterException If the target name is blank, or the destination entry is invalid or not a directory.
+     * @throws EntryInaccessibleException If the file is inaccessible or does not exist.
+     * @throws EntryTypeNotSupportedException If the file type is unsupported.
+     * @throws Exception If an unexpected error occurs during recovery.
+     */
+    public Entry recoverEntry(String targetEntryName, Entry destinationEntry) throws Exception {
+        if (targetEntryName == null || targetEntryName.isBlank()) {
+            throw new InvalidParameterException("Target entry name cannot be blank".formatted());
         }
 
-        storageLogger.debug("Attempting to publish '%s' ".formatted(targetStorageNode.getUrl(), targetStorageNode.getIsDirectory() ? "directory" : "file"));
-        final StorageNode savedStorageNode = this.storageServiceInterface.saveStorageNode(targetStorageNode);
-        final StorageNode parentStorageNode = savedStorageNode.getParent();
+        if (destinationEntry == null || destinationEntry.getId() == null || destinationEntry.getEntryPath() == null) {
+            throw new InvalidParameterException("Destination entry is invalid".formatted());
+        } else if (!destinationEntry.getIsDirectory() || !destinationEntry.getEntryPath().isValidDirectory()) {
+            throw new InvalidParameterException("Destination entry is not a directory".formatted());
+        }
+
+        /* If entry is already there (whether the file is actually accessible or not) */
+        for (int iEntry = 0; iEntry < destinationEntry.getChildren().size(); iEntry++) {
+            if (destinationEntry.getChildren().get(iEntry).getName().equals(targetEntryName)) {
+                return destinationEntry.getChildren().get(iEntry);
+            }
+        }
+
+        final Entry newEntry; /* If entry is not there but the file supposedly is... */
+        final EntryPath targetPath = destinationEntry.getEntryPath().resolve(targetEntryName);
+        if (targetPath.isValidDirectory()) {
+            newEntry = this.storageInterface.createNewEntry(destinationEntry, new ArrayList<>(), targetPath, null, null, null);
+        } else if (targetPath.isValidFile()) {
+            newEntry = this.storageInterface.createNewEntry(destinationEntry, null, targetPath, null, null, null);
+        } else if (targetPath.isValid()) {
+            throw new EntryTypeNotSupportedException("Entry '%s' is of unsupported file type".formatted(targetPath.getPath().toString()));
+        } else {
+            throw new EntryInaccessibleException("Entry '%s' is inaccessible or nonexistent".formatted(targetPath.getPath().toString()));
+        }
+
+        /* TODO: bring this entry to the attention of the admin! */
+        logger.warn("%s '%s' has been recovered and requires attention".formatted(newEntry.getIsDirectory() ? "Directory" : "File", newEntry.getUrl(), newEntry.getIsDirectory() ? "created" : "uploaded"));
+        return newEntry;
+    }
+
+    /**
+     * Creates a new entry with a valid physical path attached to it.
+     * 
+     * If a file is provided, it is moved to the target location. If no file is provided, a new directory is created.
+     * The resulting entry remains unpublished.
+     * 
+     * @param destinationEntry The parent directory where the new entry will be created.
+     * @param newEntryName The name of the new entry (file or directory).
+     * @param newEntryFile The file to be written to disk (only applicable for file entries, null for directories).
+     * @return The newly created entry with a valid path to its physical counterpart (unpublished).
+     * @throws IOException If the entry creation attempt fails due to an I/O issue.
+     * @throws InvalidParameterException If any provided parameters are invalid.
+     * @throws FileAlreadyExistsException If an entry with the same name already exists in the destination.
+     * @throws EntryInsufficientPermissionsException If the user lacks the necessary permissions.
+     * @throws EntryPhysicalCreationException If the file cannot be moved or the directory cannot be created.
+     * @throws Exception If an unexpected error occurs.
+     */
+    public Entry createEntry(Entry destinationEntry, String newEntryName, File newEntryFile) throws Exception {
+        if (!this.securityInterface.userHasRootPrivilages()) {
+            if (!this.securityInterface.userHasRequiredPermissions(destinationEntry, false, true, true)) {
+                throw new EntryInsufficientPermissionsException("Cannot %s '%s' %s '%s' directory due to insufficient permissions".formatted(newEntryFile == null ? "create directory" : "upload file", newEntryName, newEntryFile == null ? "in" : "to", destinationEntry.getUrl()));
+            }
+        }
+
+        for (int iEntry = 0; iEntry < destinationEntry.getChildren().size(); iEntry++) {
+            if (destinationEntry.getChildren().get(iEntry).getName().equals(newEntryName)) {
+                throw new FileAlreadyExistsException("Entry '%s' already exists in '%s' directory".formatted(newEntryName, destinationEntry.getUrl()));
+            }
+        }
+
+        final EntryPath entryPath = destinationEntry.getEntryPath().resolve(newEntryName);
+        if (newEntryFile != null) {
+            try {
+                Files.move(Path.of(newEntryFile.getPath()), entryPath.getPath());
+            } catch (Exception exception) {
+                throw new EntryPhysicalCreationException("File content couldn't be written to '%s' file: %s".formatted(entryPath.getRelativePath().toString(), exception.getMessage()));
+            }
+        } else {
+            try {
+                Files.createDirectory(entryPath.getPath());
+            } catch (Exception exception) {
+                throw new EntryPhysicalCreationException("Directory '%s' couldn't be created".formatted(entryPath.getRelativePath().toString(), exception.getMessage()));
+            }
+        }
+
+        final Entry newEntry = this.storageInterface.createNewEntry(destinationEntry, newEntryFile == null ? new ArrayList<>() : null, entryPath, null, null, null);
+        logger.info("%s '%s' has been %s successfully".formatted(newEntry.getIsDirectory() ? "Directory" : "File", newEntry.getUrl(), newEntry.getIsDirectory() ? "created" : "uploaded"));
+        return newEntry;
+    }
+
+    /**
+     * Publishes a entry in the working tree and commits it to the database.
+     * If the entry already exists, it will be updated.
+     *
+     * @param targetEntry The entry to be published or updated.
+     * @return The published or updated entry.
+     * @throws InvalidParameterException If the target entry is null or has invalid path.
+     * @throws EntryPublishingRaceException If a race condition is detected.
+     * @throws Exception If an unexpected error occurs during publishing.
+     */
+    public Entry publishEntry(Entry targetEntry) throws Exception {
+        if (targetEntry == null || targetEntry.getEntryPath() == null) {
+            throw new InvalidParameterException("Target entry is invalid".formatted());
+        } else if (targetEntry.getParent() == null) {
+            throw new InvalidParameterException("Root entry is not targetable".formatted());
+        }
+
+        logger.debug("Attempting to publish '%s' ".formatted(targetEntry.getUrl(), targetEntry.getIsDirectory() ? "directory" : "file"));
+        final Entry persistedEntry = this.storageInterface.persistEntry(targetEntry);
+        final Entry parentEntry = persistedEntry.getParent();
 
         /* If search by ID turns up with anything then this is an update job */
-        for (int iNode = 0; iNode < parentStorageNode.getChildren().size(); iNode++) {
-            if (parentStorageNode.getChildren().get(iNode).getId().equals(savedStorageNode.getId())) {
-                parentStorageNode.getChildren().remove(iNode); /* Remove now and replace later */
+        for (int iEntry = 0; iEntry < parentEntry.getChildren().size(); iEntry++) {
+            if (parentEntry.getChildren().get(iEntry).getId().equals(persistedEntry.getId())) {
+                parentEntry.getChildren().remove(iEntry); /* Remove now and replace later */
             }
         }
 
         /* If search by name turns up with anything then we have a big problem */
-        final Integer iNode = Collections.binarySearch(parentStorageNode.getChildren(), savedStorageNode, this.storageServiceInterface.getStorageComparator());
-        if (iNode >= 0) { /* If the ID matches then update is permissible... although it should never come to this. */
-            if (!savedStorageNode.getId().equals(parentStorageNode.getChildren().get(iNode).getId())) {
+        final Integer iEntry = Collections.binarySearch(parentEntry.getChildren(), persistedEntry, this.storageInterface.getStorageComparator());
+        if (iEntry >= 0) { /* If the ID matches then update is permissible... although it should never come to this. */
+            if (!persistedEntry.getId().equals(parentEntry.getChildren().get(iEntry).getId())) {
                 /* If the ID doesn't match then we have a race condition. */
-                throw new NodePublishingRaceException("It's a race!".formatted());
+                throw new EntryPublishingRaceException("It's a race!".formatted());
             }
 
-            parentStorageNode.getChildren().set(iNode, savedStorageNode);
+            parentEntry.getChildren().set(iEntry, persistedEntry);
         } else {            
-            parentStorageNode.getChildren().add((-iNode - 1), savedStorageNode);
+            parentEntry.getChildren().add((-iEntry - 1), persistedEntry);
         }
         
-        this.storageHashMap.put(savedStorageNode.getId(), savedStorageNode);
+        this.entryCache.put(persistedEntry.getId(), persistedEntry);
 
-        storageLogger.info("%s '%s' has been published successfully".formatted(savedStorageNode.getIsDirectory() ? "Directory" : "File", savedStorageNode.getUrl()));
-        return savedStorageNode;
+        logger.info("%s '%s' has been published successfully".formatted(persistedEntry.getIsDirectory() ? "Directory" : "File", persistedEntry.getUrl()));
+        return persistedEntry;
     }
 
     /**
-     * <p>Find an existing node by name, whether it exists as a full-blown node on the tree or just as a physical node in the drive and recover it</p>
-     * @param targetNodeName name of the node to be searched for in the parent node directory
-     * @param destinationStorageNode existing parent node to which the new node will be attached
-     * @return a newly created node with a path to the file that was previously uncatalogued
-     * @throws InvalidParameterException if any of the provided parameters are invalid
-     * @throws NodeIsInaccessibleException if file is inaccessible or nonexistent
-     * @throws NodeTypeNotSupportedException if file type is not supported
-     * @throws Exception if anything not covered above was thrown
+     * Transfers an entry to a new destination, either by copying or moving it.
+     * 
+     * If {@code persistOriginal} is {@code true}, the operation performs a copy; otherwise, it performs a move.
+     * If {@code replaceExisting} is {@code true}, an existing entry with the same name in the destination will be replaced.
+     * 
+     * @param targetEntry The entry to be transferred.
+     * @param destinationEntry The destination directory where the entry will be transferred.
+     * @param newName The new name for the transferred entry (if {@code null}, the original name is retained).
+     * @param persistOriginal If {@code true}, the original entry is retained (copy); otherwise, it is moved (default: {@code true}).
+     * @param replaceExisting If {@code true}, an existing entry with the same name in the destination will be replaced (default: {@code false}).
+     * @return The newly created or moved entry with an updated path (unpublished).
+     * @throws InvalidParameterException If any of the provided parameters are invalid.
+     * @throws FileAlreadyExistsException If a entry with the same name already exists in the destination and {@code replaceExisting} is {@code false}.
+     * @throws EntryInsufficientPermissionsException If the user lacks the necessary permissions to perform the operation.
+     * @throws EntryTypeNotSupportedException If attempting to replace a directory entry.
+     * @throws IOException If the transfer fails due to an I/O issue.
+     * @throws Exception If an unexpected error occurs.
      */
-    public StorageNode recoverStorageNode(String targetNodeName, StorageNode destinationStorageNode) throws Exception {
-        if (targetNodeName == null || targetNodeName.isBlank()) {
-            throw new InvalidParameterException("Target node name cannot be blank.".formatted());
+    public Entry transferEntry(Entry targetEntry, Entry destinationEntry, String newName, Boolean persistOriginal, Boolean replaceExisting) throws Exception {
+        if (targetEntry == null || targetEntry.getId() == null || targetEntry.getEntryPath() == null) {
+            throw new InvalidParameterException("Target entry is invalid".formatted());
+        } else if (targetEntry.getParent() == null) {
+            throw new InvalidParameterException("Root entry is not targetable".formatted());
         }
 
-        if (destinationStorageNode == null || destinationStorageNode.getId() == null || destinationStorageNode.getNodePath() == null) {
-            throw new InvalidParameterException("Destination node is invalid.".formatted());
-        } else if (!destinationStorageNode.getIsDirectory() || !destinationStorageNode.getNodePath().isValidDirectory()) {
-            throw new InvalidParameterException("Destination node is not a directory.".formatted());
+        if (destinationEntry == null || destinationEntry.getId() == null || destinationEntry.getEntryPath() == null) {
+            throw new InvalidParameterException("Destination entry is invalid".formatted());
+        } else if (!destinationEntry.getIsDirectory() || !destinationEntry.getEntryPath().isValidDirectory()) {
+            throw new InvalidParameterException("Destination entry is not a directory".formatted());
         }
 
-        /* If node is already there (whether the file is actually accessible or not) */
-        for (int iNode = 0; iNode < destinationStorageNode.getChildren().size(); iNode++) {
-            if (destinationStorageNode.getChildren().get(iNode).getName().equals(targetNodeName)) {
-                return destinationStorageNode.getChildren().get(iNode);
+        final String newEntryName = newName != null ? newName : targetEntry.getName();
+        final Boolean replaceExistingEntry = replaceExisting == null ? false : replaceExisting;
+        final Boolean persistOriginalEntry = persistOriginal == null ? true : persistOriginal;
+        for (int iEntry = 0; iEntry < destinationEntry.getChildren().size(); iEntry++) {
+            if (destinationEntry.getChildren().get(iEntry).getName().equals(newEntryName)) {
+                throw new FileAlreadyExistsException("Entry '%s' already exists in '%s' directory".formatted(newEntryName, destinationEntry.getUrl()));
             }
         }
 
-        final StorageNode newStorageNode; /* If node is not there but the file supposedly is... */
-        final NodePath targetPath = destinationStorageNode.getNodePath().resolve(targetNodeName);
-        if (targetPath.isValidDirectory()) {
-            newStorageNode = this.storageServiceInterface.createNewStorageNode(destinationStorageNode, new ArrayList<>(), targetPath, null, null, null);
-        } else if (targetPath.isValidFile()) {
-            newStorageNode = this.storageServiceInterface.createNewStorageNode(destinationStorageNode, null, targetPath, null, null, null);
-        } else if (targetPath.isValidNode()) {
-            throw new NodeTypeNotSupportedException("Node '%s' is of unsupported file type.".formatted(targetPath.getPath().toString()));
-        } else {
-            throw new NodeIsInaccessibleException("Node '%s' is inaccessible or nonexistent".formatted(targetPath.getPath().toString()));
-        }
-
-        /* TODO: bring this node to the attention of the admin! */
-        storageLogger.warn("%s '%s' has been recovered and requires attention".formatted(newStorageNode.getIsDirectory() ? "Directory" : "File", newStorageNode.getUrl(), newStorageNode.getIsDirectory() ? "created" : "uploaded"));
-        return newStorageNode;
-    }
-
-    /**
-     * <p>Create a new node with a valid physical path attached to it</p>
-     * @param newFile file to be written to disk (applicable only to file nodes)
-     * @param newStorageNode an incomplete, unpublished node that is to be created
-     * @param destinationStorageNode destination node where the new node is to be created
-     * @return the completed node with a valid path to its physical part (unpublished)
-     * @throws IOException if the node creation attempt fails for any I/O reason
-     * @throws InvalidParameterException if any of the provided parameters are invalid
-     * @throws FileAlreadyExistsException if a node under the same name already exists under this destination 
-     * @throws Exception if anything not covered above was thrown
-     */
-    public StorageNode createStorageNode(StorageNode destinationStorageNode, String newStorageNodeName, File newStorageNodeFile) throws Exception {
-        if (!this.storageSecurityInterface.userHasRootPrivilages()) {
-            if (!this.storageSecurityInterface.userHasRequiredPermissions(destinationStorageNode, false, true, true)) {
-                throw new NodeInsufficientPermissionsException("Cannot %s '%s' %s '%s' directory due to insufficient permissions".formatted(newStorageNodeFile == null ? "create directory" : "upload file", newStorageNodeName, newStorageNodeFile == null ? "in" : "to", destinationStorageNode.getUrl()));
-            }
-        }
-
-        for (int iNode = 0; iNode < destinationStorageNode.getChildren().size(); iNode++) {
-            if (destinationStorageNode.getChildren().get(iNode).getName().equals(newStorageNodeName)) {
-                throw new FileAlreadyExistsException("Node '%s' already exists in '%s' directory.".formatted(newStorageNodeName, destinationStorageNode.getUrl()));
-            }
-        }
-
-        final NodePath finalNodePath = destinationStorageNode.getNodePath().resolve(newStorageNodeName);
-        if (newStorageNodeFile != null) {
-            try {
-                Files.move(Path.of(newStorageNodeFile.getPath()), finalNodePath.getPath());
-            } catch (Exception exception) {
-                throw new StorageServiceException("File content couldn't be written to '%s' file: %s".formatted(finalNodePath.getRelativePath().toString(), exception.getMessage()));
-            }
-        } else {
-            try {
-                Files.createDirectory(finalNodePath.getPath());
-            } catch (Exception exception) {
-                throw new StorageServiceException("Directory '%s' couldn't be created".formatted(finalNodePath.getRelativePath().toString(), exception.getMessage()));
-            }
-        }
-
-        final StorageNode newStorageNode = this.storageServiceInterface.createNewStorageNode(destinationStorageNode, newStorageNodeFile == null ? new ArrayList<>() : null, finalNodePath, null, null, null);
-        storageLogger.info("%s '%s' has been %s successfully".formatted(newStorageNode.getIsDirectory() ? "Directory" : "File", newStorageNode.getUrl(), newStorageNode.getIsDirectory() ? "created" : "uploaded"));
-        return newStorageNode;
-    }
-
-    public StorageNode createDummyStorageNode(StorageNode destinationStorageNode, List<StorageNode> children, String nodeName) {
-        return this.storageServiceInterface.createNewStorageNode(destinationStorageNode, children, null, null, null, null).setName(nodeName);
-    }
-
-    /**
-     * <p>Transfer a node to a new destination (copy/move)</p>
-     * @param newStorageNode an incomplete, unpublished node that is to be created
-     * @param targetStorageNode target node that is to be transfered to a new destination
-     * @param destinationStorageNode destination node that the target is to be transfered into
-     * @param persistOriginal if true the original node will be persisted (copy) (default: true)
-     * @param replace if true the node will replace the conflicting node (default: false)
-     * @return the completed node with a valid path to its physical part (unpublished)
-     * @throws InvalidParameterException if any of the provided parameters are invalid
-     * @throws FileAlreadyExistsException if a node under the same name already exists under this destination 
-     * @throws IOException if the node transfer attempt fails for any I/O reason
-     * @throws Exception if anything not covered above was thrown
-     */
-    public StorageNode transferStorageNode(StorageNode targetStorageNode, StorageNode destinationStorageNode, String newName, Boolean persistOriginal, Boolean replaceExisting) throws Exception {
-        if (targetStorageNode == null || targetStorageNode.getId() == null || targetStorageNode.getNodePath() == null) {
-            throw new InvalidParameterException("Target node is invalid.".formatted());
-        } else if (targetStorageNode.getParent() == null) {
-            throw new InvalidParameterException("Root node is not targetable.".formatted());
-        }
-
-        if (destinationStorageNode == null || destinationStorageNode.getId() == null || destinationStorageNode.getNodePath() == null) {
-            throw new InvalidParameterException("Destination node is invalid.".formatted());
-        } else if (!destinationStorageNode.getIsDirectory() || !destinationStorageNode.getNodePath().isValidDirectory()) {
-            throw new InvalidParameterException("Destination node is not a directory.".formatted());
-        }
-
-        final String newStorageNodeName = newName != null ? newName : targetStorageNode.getName();
-        final Boolean replaceExistingNode = replaceExisting == null ? false : replaceExisting;
-        final Boolean persistOriginalNode = persistOriginal == null ? true : persistOriginal;
-        for (int iNode = 0; iNode < destinationStorageNode.getChildren().size(); iNode++) {
-            if (destinationStorageNode.getChildren().get(iNode).getName().equals(newStorageNodeName)) {
-                throw new FileAlreadyExistsException("Node '%s' already exists in '%s' directory.".formatted(newStorageNodeName, destinationStorageNode.getUrl()));
-            }
-        }
-
-        if (!this.storageSecurityInterface.userHasRootPrivilages()) {
-            if (persistOriginalNode) {
-                if (!this.storageSecurityInterface.userHasRequiredPermissions(targetStorageNode, true, false, false) || !this.storageSecurityInterface.userHasRequiredPermissions(destinationStorageNode, false, true, true)) {
-                    throw new NodeInsufficientPermissionsException("Cannot copy %s '%s' to directory '%s' due to insufficient permissions".formatted(targetStorageNode.getIsDirectory() ? "directory" : "file", targetStorageNode.getUrl(), destinationStorageNode.getUrl()));
+        if (!this.securityInterface.userHasRootPrivilages()) {
+            if (persistOriginalEntry) {
+                if (!this.securityInterface.userHasRequiredPermissions(targetEntry, true, false, false) || !this.securityInterface.userHasRequiredPermissions(destinationEntry, false, true, true)) {
+                    throw new EntryInsufficientPermissionsException("Cannot copy %s '%s' to directory '%s' due to insufficient permissions".formatted(targetEntry.getIsDirectory() ? "directory" : "file", targetEntry.getUrl(), destinationEntry.getUrl()));
                 }
             } else {
-                if (!this.storageSecurityInterface.userHasRequiredPermissions(targetStorageNode.getParent(), false, true, true) || !this.storageSecurityInterface.userHasRequiredPermissions(destinationStorageNode, false, true, true)) {
-                    throw new NodeInsufficientPermissionsException("Cannot move %s '%s' to directory '%s' due to insufficient permissions".formatted(targetStorageNode.getIsDirectory() ? "directory" : "file", targetStorageNode.getUrl(), destinationStorageNode.getUrl()));
+                if (!this.securityInterface.userHasRequiredPermissions(targetEntry.getParent(), false, true, true) || !this.securityInterface.userHasRequiredPermissions(destinationEntry, false, true, true)) {
+                    throw new EntryInsufficientPermissionsException("Cannot move %s '%s' to directory '%s' due to insufficient permissions".formatted(targetEntry.getIsDirectory() ? "directory" : "file", targetEntry.getUrl(), destinationEntry.getUrl()));
                 }
 
-                if (targetStorageNode.getParent().stickyBitIsSet() && !this.storageSecurityInterface.userIsTheOwnerOfTheNode(targetStorageNode) && !this.storageSecurityInterface.userIsTheOwnerOfTheNode(targetStorageNode.getParent())) {
-                    throw new NodeInsufficientPermissionsException("Cannot move %s '%s' out of a shared directory due to insufficient permissions".formatted(targetStorageNode.getIsDirectory() ? "directory" : "file", targetStorageNode.getUrl()));
+                if (targetEntry.getParent().stickyBitIsSet() && !this.securityInterface.userIsTheOwnerOfTheEntry(targetEntry) && !this.securityInterface.userIsTheOwnerOfTheEntry(targetEntry.getParent())) {
+                    throw new EntryInsufficientPermissionsException("Cannot move %s '%s' out of a shared directory due to insufficient permissions".formatted(targetEntry.getIsDirectory() ? "directory" : "file", targetEntry.getUrl()));
                 }
             }
         }
 
-        final NodePath targetNodePath = destinationStorageNode.getNodePath().resolve(newStorageNodeName);
-        final NodePath currentNodePath = targetStorageNode.getNodePath();
-        final NodePath finalNodePath;
+        final EntryPath targetEntryPath = destinationEntry.getEntryPath().resolve(newEntryName);
+        final EntryPath currentEntryPath = targetEntry.getEntryPath();
+        final EntryPath afterTransferEntryPath;
 
-        if (persistOriginalNode) {
-            if (replaceExistingNode) {
-                finalNodePath = destinationStorageNode.getNodePath().resolveFromRoot(Files.copy(currentNodePath.getPath(), targetNodePath.getPath(), StandardCopyOption.REPLACE_EXISTING));
+        if (persistOriginalEntry) {
+            if (replaceExistingEntry) {
+                afterTransferEntryPath = destinationEntry.getEntryPath().resolveFromRoot(Files.copy(currentEntryPath.getPath(), targetEntryPath.getPath(), StandardCopyOption.REPLACE_EXISTING));
             } else {
-                finalNodePath = destinationStorageNode.getNodePath().resolveFromRoot(Files.copy(currentNodePath.getPath(), targetNodePath.getPath()));
+                afterTransferEntryPath = destinationEntry.getEntryPath().resolveFromRoot(Files.copy(currentEntryPath.getPath(), targetEntryPath.getPath()));
             }
         } else {
-            if (targetStorageNode.getIsDirectory()) {
-                if (replaceExistingNode) {
-                    throw new NodeTypeNotSupportedException("Cannot replace existing '%s' directory".formatted(targetStorageNode.getUrl()));
+            if (targetEntry.getIsDirectory()) {
+                if (replaceExistingEntry) {
+                    throw new EntryTypeNotSupportedException("Cannot replace existing '%s' directory".formatted(targetEntry.getUrl()));
                 }
 
-                finalNodePath = destinationStorageNode.getNodePath().resolveFromRoot(Files.createDirectory(targetNodePath.getPath()));
+                afterTransferEntryPath = destinationEntry.getEntryPath().resolveFromRoot(Files.createDirectory(targetEntryPath.getPath()));
             } else {
-                if (replaceExistingNode) {
-                    finalNodePath = destinationStorageNode.getNodePath().resolveFromRoot(Files.move(currentNodePath.getPath(), targetNodePath.getPath(), StandardCopyOption.REPLACE_EXISTING));
+                if (replaceExistingEntry) {
+                    afterTransferEntryPath = destinationEntry.getEntryPath().resolveFromRoot(Files.move(currentEntryPath.getPath(), targetEntryPath.getPath(), StandardCopyOption.REPLACE_EXISTING));
                 } else {
-                    finalNodePath = destinationStorageNode.getNodePath().resolveFromRoot(Files.move(currentNodePath.getPath(), targetNodePath.getPath()));
+                    afterTransferEntryPath = destinationEntry.getEntryPath().resolveFromRoot(Files.move(currentEntryPath.getPath(), targetEntryPath.getPath()));
                 }
             }
         }
 
-        final StorageNode newStorageNode;
-        if (persistOriginalNode) { /* Copied nodes acquire new attributes (defaults) */
-            newStorageNode = this.storageServiceInterface.createNewStorageNode(destinationStorageNode, targetStorageNode.getIsDirectory() ? new ArrayList<>() : null, finalNodePath, null, null, null);
-        } else { /* Moved nodes retain attributes of the original node */
-            newStorageNode = this.storageServiceInterface.createNewStorageNode(destinationStorageNode, targetStorageNode.getIsDirectory() ? new ArrayList<>() : null, finalNodePath, targetStorageNode.getUser(), targetStorageNode.getGroup(), targetStorageNode.getPermissions());
+        final Entry newEntry;
+        if (persistOriginalEntry) { /* Copied entries acquire new attributes (defaults) */
+            newEntry = this.storageInterface.createNewEntry(destinationEntry, targetEntry.getIsDirectory() ? new ArrayList<>() : null, afterTransferEntryPath, null, null, null);
+        } else { /* Moved entries retain attributes of the original entry */
+            newEntry = this.storageInterface.createNewEntry(destinationEntry, targetEntry.getIsDirectory() ? new ArrayList<>() : null, afterTransferEntryPath, targetEntry.getUser(), targetEntry.getGroup(), targetEntry.getPermissions());
         }
 
-        storageLogger.info("%s '%s' has been %s to '%s' directory successfully".formatted(targetStorageNode.getIsDirectory() ? "Directory" : "File", targetStorageNode.getUrl(), persistOriginalNode ? "copied" : "moved", destinationStorageNode.getUrl()));
-        return newStorageNode;
+        logger.info("%s '%s' has been %s to '%s' directory successfully".formatted(targetEntry.getIsDirectory() ? "Directory" : "File", targetEntry.getUrl(), persistOriginalEntry ? "copied" : "moved", destinationEntry.getUrl()));
+        return newEntry;
+    }
+
+    public Entry modifyEntry(Entry targetEntry) throws Exception {
+        /* TODO: update storage entry! */
+        return targetEntry;
     }
 
     /**
-     * @param targetStorageNode target node that is to be deleted
-     * @return the target node for the purpose of confirming deletion
-     * @throws IOException if the node removal attempt fails for any I/O reason
-     * @throws InvalidParameterException if any of the provided parameters are invalid
-     * @throws DirectoryNotEmptyException if deletion fails due to the directory being occupied
-     * @throws Exception if anything not covered above was thrown
+     * Modifies the permission flags of the specified entry.
+     *
+     * This method supports both octal (e.g., "755", "0644") and symbolic (e.g., "u+rwx", "g-w", "o+t") 
+     * permission notations. If the user lacks sufficient permissions, the operation will fail.
+     *
+     * @param targetEntry The entry whose permission flags are to be updated or set.
+     * @param permissionFlags The new permission flags, either as an octal value or symbolic notation.
+     * @return The updated entry with the new permission flags (unpublished).
+     * @throws EntryInsufficientPermissionsException If the user does not have sufficient permissions to modify the entry.
+     * @throws InvalidParameterException If the provided entry is {@code null} or is the root entry.
+     * @throws IllegalArgumentException If the permission flags are malformed or contain invalid scopes.
+     * @throws Exception If an unexpected error occurs.
      */
-    public StorageNode deleteStorageNode(StorageNode targetStorageNode) throws Exception {
-        if (targetStorageNode == null) {
-            throw new InvalidParameterException("Target node is invalid.".formatted());
-        } else if (targetStorageNode.getParent() == null) {
-            throw new InvalidParameterException("Root node is not targetable.".formatted());
+    public Entry modifyEntryPermissions(Entry targetEntry, String permissionFlags) throws Exception {
+        if (targetEntry == null) {
+            throw new InvalidParameterException("Target entry is invalid".formatted());
+        } else if (targetEntry.getParent() == null) {
+            throw new InvalidParameterException("Root entry is not targetable".formatted());
         }
 
-        if (!this.storageSecurityInterface.userHasRootPrivilages()) {
-            if (!this.storageSecurityInterface.userHasRequiredPermissions(targetStorageNode.getParent(), false, true, true)) {
-                throw new NodeInsufficientPermissionsException("Cannot remove %s '%s' due to insufficient permissions".formatted(targetStorageNode.getIsDirectory() ? "directory" : "file", targetStorageNode.getUrl()));
-            }
-
-            if (targetStorageNode.getParent().stickyBitIsSet() && !this.storageSecurityInterface.userIsTheOwnerOfTheNode(targetStorageNode) && !this.storageSecurityInterface.userIsTheOwnerOfTheNode(targetStorageNode.getParent())) {
-                throw new NodeInsufficientPermissionsException("Cannot remove %s '%s' from a shared directory due to insufficient permissions".formatted(targetStorageNode.getIsDirectory() ? "directory" : "file", targetStorageNode.getUrl()));
-            }
-        }
-
-        if (targetStorageNode.getId() != null) {
-            this.storageServiceInterface.deleteStorageNode(targetStorageNode);
-            this.storageHashMap.remove(targetStorageNode.getId());
-        }
-
-        targetStorageNode.getParent().getChildren().remove(targetStorageNode);
-        Files.deleteIfExists(targetStorageNode.getNodePath().getPath());
-
-        storageLogger.info("%s '%s' has been removed successfully".formatted(targetStorageNode.getIsDirectory() ? "Directory" : "File", targetStorageNode.getUrl()));
-        return targetStorageNode.setNodePath(null).setId(null);
-    }
-
-    public StorageNode updateStorageNode(StorageNode targetStorageNode) throws Exception {
-        /* TODO: update storage node! */
-        return targetStorageNode;
-    }
-
-    /**
-     * @param targetStorageNode target node permission flags of which are to be updated or set
-     * @param permissionFlags target flags or operations on them described symbolically
-     * @return The original storage node with new permission flags
-     * @throws NodeInsufficientPermissionsException
-     * @throws InvalidParameterException
-     * @throws IllegalArgumentException
-     */
-    public StorageNode chmodStorageNode(StorageNode targetStorageNode, String permissionFlags) throws Exception {
-        if (targetStorageNode == null) {
-            throw new InvalidParameterException("Target node is invalid.".formatted());
-        } else if (targetStorageNode.getParent() == null) {
-            throw new InvalidParameterException("Root node is not targetable.".formatted());
-        }
-
-        if (!this.storageSecurityInterface.userHasRootPrivilages()) {
-            if (!this.storageSecurityInterface.userIsTheOwnerOfTheNode(targetStorageNode)) {
-                throw new NodeInsufficientPermissionsException("Cannot modify %s '%s' permission flags due to insufficient permissions".formatted(targetStorageNode.getIsDirectory() ? "directory" : "file", targetStorageNode.getUrl()));
+        if (!this.securityInterface.userHasRootPrivilages()) {
+            if (!this.securityInterface.userIsTheOwnerOfTheEntry(targetEntry)) {
+                throw new EntryInsufficientPermissionsException("Cannot modify %s '%s' permission flags due to insufficient permissions".formatted(targetEntry.getIsDirectory() ? "directory" : "file", targetEntry.getUrl()));
             }
         }
 
@@ -539,7 +565,7 @@ public class Storage {
             Pattern pattern = Pattern.compile("^((?:[ugo]{1,3}|a)?)([+=-])([rwxst]{0,5})$");
             ArrayList<String[]> operationsMatrix = new ArrayList<>();
 
-            Integer integerPermissions = Integer.parseInt(targetStorageNode.getPermissions(), 8);
+            Integer integerPermissions = Integer.parseInt(targetEntry.getPermissions(), 8);
             Integer flagMask, specialMask, permissionMask;
             String scope, operator, permissions;
 
@@ -639,69 +665,131 @@ public class Storage {
                 }
             }
 
-            storageLogger.info("%s '%s' permission flags have been updated to %o successfully".formatted(targetStorageNode.getIsDirectory() ? "Directory" : "File", targetStorageNode.getUrl(), integerPermissions));
-            return targetStorageNode.setPermissions(String.format("%o", integerPermissions));
+            logger.info("%s '%s' permission flags have been updated to %o successfully".formatted(targetEntry.getIsDirectory() ? "Directory" : "File", targetEntry.getUrl(), integerPermissions));
+            return targetEntry.setPermissions(String.format("%o", integerPermissions));
         }
 
-        storageLogger.info("%s '%s' permission flags have been set to %s successfully".formatted(targetStorageNode.getIsDirectory() ? "Directory" : "File", targetStorageNode.getUrl(), permissionFlags));
-        return targetStorageNode.setPermissions(permissionFlags);
+        logger.info("%s '%s' permission flags have been set to %s successfully".formatted(targetEntry.getIsDirectory() ? "Directory" : "File", targetEntry.getUrl(), permissionFlags));
+        return targetEntry.setPermissions(permissionFlags);
     }
 
     /**
-     * @param targetStorageNode
-     * @param user
-     * @param group
-     * @return
-     * @throws Exception
+     * Modifies the ownership of the specified entry.
+     *
+     * The new owner and group must be specified in the format {@code userUUID:groupUUID}, 
+     * where either value may be omitted (e.g., {@code userUUID} to change only the user, 
+     * or {@code :groupUUID} to change only the group).
+     *
+     * @param targetEntry The entry whose ownership is to be updated.
+     * @param pairedOwners A string containing the new owner and group UUIDs, separated by a colon (":").
+     *                     Example: {@code "550e8400-e29b-41d4-a716-446655440000:9f3c9e3e-7b7d-42e2-bf99-dc62b5f4d423"}.
+     * @return The updated entry with the new ownership values (unpublished).
+     * @throws EntryInsufficientPermissionsException If the user lacks the necessary permissions to change ownership.
+     * @throws InvalidParameterException If the provided entry is {@code null} or is the root entry.
+     * @throws IllegalArgumentException If the ownership string is incorrectly formatted.
+     * @throws Exception If an unexpected error occurs.
      */
-    public StorageNode chownStorageNode(StorageNode targetStorageNode, String pairedOwners) throws Exception {
-        if (targetStorageNode == null) {
-            throw new InvalidParameterException("Target node is invalid.".formatted());
-        } else if (targetStorageNode.getParent() == null) {
-            throw new InvalidParameterException("Root node is not targetable.".formatted());
+    public Entry modifyEntryOwnership(Entry targetEntry, String pairedOwners) throws Exception {
+        if (targetEntry == null) {
+            throw new InvalidParameterException("Target entry is invalid".formatted());
+        } else if (targetEntry.getParent() == null) {
+            throw new InvalidParameterException("Root entry is not targetable".formatted());
         }
 
         final String[] splitOwners = pairedOwners.split(":");
         final UUID user = splitOwners.length > 0 ? UUID.fromString(splitOwners[0]) : null;
         final UUID group = splitOwners.length > 1 ? UUID.fromString(splitOwners[1]) : null;
 
-        if (!this.storageSecurityInterface.userHasRootPrivilages()) {
-            if (!this.storageSecurityInterface.userHasRequiredPermissions(targetStorageNode.getParent(), false, true, true) || !this.storageSecurityInterface.userIsTheOwnerOfTheNode(targetStorageNode)) {
-                throw new NodeInsufficientPermissionsException("Cannot modify %s '%s' ownership due to insufficient permissions".formatted(targetStorageNode.getIsDirectory() ? "directory" : "file", targetStorageNode.getUrl()));
+        if (user == null && group == null) {
+            throw new IllegalArgumentException("Ownership string '%s' is invalid".formatted(pairedOwners));
+        }
+
+        if (!this.securityInterface.userHasRootPrivilages()) {
+            if (!this.securityInterface.userHasRequiredPermissions(targetEntry.getParent(), false, true, true) || !this.securityInterface.userIsTheOwnerOfTheEntry(targetEntry)) {
+                throw new EntryInsufficientPermissionsException("Cannot modify %s '%s' ownership due to insufficient permissions".formatted(targetEntry.getIsDirectory() ? "directory" : "file", targetEntry.getUrl()));
             }
 
-            if (user != null && !this.storageSecurityInterface.userCanInteractWithTheTargetUser(user)) {
-                throw new NodeInsufficientPermissionsException("Cannot modify %s '%s' ownership because the user cannot interact with the target user".formatted(targetStorageNode.getIsDirectory() ? "directory" : "file", targetStorageNode.getUrl()));
+            if (user != null && !this.securityInterface.userCanInteractWithTheUser(user)) {
+                throw new EntryInsufficientPermissionsException("Cannot modify %s '%s' ownership because the user cannot interact with the target user".formatted(targetEntry.getIsDirectory() ? "directory" : "file", targetEntry.getUrl()));
             }
 
-            if (group != null && !this.storageSecurityInterface.userBelongsToTheTargetGroup(group)) {
-                throw new NodeInsufficientPermissionsException("Cannot modify %s '%s' ownership because the user doesn't belong to the target group".formatted(targetStorageNode.getIsDirectory() ? "directory" : "file", targetStorageNode.getUrl()));
+            if (group != null && !this.securityInterface.userBelongsToTheGroup(group)) {
+                throw new EntryInsufficientPermissionsException("Cannot modify %s '%s' ownership because the user doesn't belong to the target group".formatted(targetEntry.getIsDirectory() ? "directory" : "file", targetEntry.getUrl()));
             }
         }
 
         /* Done separately from the permission check to ensure that the change is not just partially permitted */
-        if (user != null) targetStorageNode.setUser(user);
+        if (user != null) targetEntry.setUser(user);
             
         /* Done separately from the permission check to ensure that the change is not just partially permitted */
-        if (group != null) targetStorageNode.setGroup(group);
+        if (group != null) targetEntry.setGroup(group);
 
-        storageLogger.info("%s '%s' ownership has been transfered to %s:%s successfully".formatted(targetStorageNode.getIsDirectory() ? "Directory" : "File", targetStorageNode.getUrl(), user != null ? user.toString() : "", group != null ? group.toString() : ""));
-        return targetStorageNode;
+        logger.info("%s '%s' ownership has been transfered to %s:%s successfully".formatted(targetEntry.getIsDirectory() ? "Directory" : "File", targetEntry.getUrl(), user != null ? user.toString() : "", group != null ? group.toString() : ""));
+        return targetEntry;
     }
 
     /**
-     * <p>Will query the quick access hash map and retrieve a matching node if it exists</p>
-     * @param targetID UUID to query the hash map for
-     * @return a matching node or a null in case of a no match
+     * Deletes the specified entry from storage and removes its physical representation.
+     *
+     * If the entry exists in the database, it will be removed from storage, 
+     * its cached reference will be deleted, and its physical file or directory 
+     * will be deleted from disk.
+     * 
+     * @param targetEntry The entry to be deleted.
+     * @return The deleted entry with its UUID and path set to {@code null}, confirming deletion.
+     * @throws InvalidParameterException If the provided entry is {@code null} or is the root entry.
+     * @throws EntryInsufficientPermissionsException If the user lacks the necessary permissions to delete the entry.
+     * @throws DirectoryNotEmptyException If attempting to delete a non-empty directory.
+     * @throws IOException If the entry removal attempt fails due to an I/O issue.
+     * @throws Exception If an unexpected error occurs.
      */
-    public StorageNode retrieveStorageNode(UUID targetID) {
-        return this.storageHashMap.get(targetID);
+    public Entry deleteEntry(Entry targetEntry) throws Exception {
+        if (targetEntry == null) {
+            throw new InvalidParameterException("Target entry is invalid".formatted());
+        } else if (targetEntry.getParent() == null) {
+            throw new InvalidParameterException("Root entry is not targetable".formatted());
+        }
+
+        if (!this.securityInterface.userHasRootPrivilages()) {
+            if (!this.securityInterface.userHasRequiredPermissions(targetEntry.getParent(), false, true, true)) {
+                throw new EntryInsufficientPermissionsException("Cannot remove %s '%s' due to insufficient permissions".formatted(targetEntry.getIsDirectory() ? "directory" : "file", targetEntry.getUrl()));
+            }
+
+            if (targetEntry.getParent().stickyBitIsSet() && !this.securityInterface.userIsTheOwnerOfTheEntry(targetEntry) && !this.securityInterface.userIsTheOwnerOfTheEntry(targetEntry.getParent())) {
+                throw new EntryInsufficientPermissionsException("Cannot remove %s '%s' from a shared directory due to insufficient permissions".formatted(targetEntry.getIsDirectory() ? "directory" : "file", targetEntry.getUrl()));
+            }
+        }
+
+        if (targetEntry.getId() != null) {
+            this.storageInterface.deleteEntry(targetEntry);
+            this.entryCache.remove(targetEntry.getId());
+        }
+
+        targetEntry.getParent().getChildren().remove(targetEntry);
+        Files.deleteIfExists(targetEntry.getEntryPath().getPath());
+
+        logger.info("%s '%s' has been removed successfully".formatted(targetEntry.getIsDirectory() ? "Directory" : "File", targetEntry.getUrl()));
+        return targetEntry.setEntryPath(null).setId(null);
     }
 
+    //**********************************************************//
+    //*                                                        *//
+    //*                     Additional tools                   *//
+    //*                                                        *//
+    //**********************************************************//
+
     /**
-     * @return the root node of the storage tree
+     * Creates a dummy entry under the specified destination entry.
+     *
+     * This method wraps around {@code storageInterface.createNewEntry} to generate a new 
+     * entry with a given name but without a specific user, group, permissions, or most importantly path.
+     *
+     * @param destinationEntry The parent entry where the dummy entry will be created.
+     * @param children A list of child entries to associate with the new dummy entry.
+     * @param entryName The name of the new dummy entry.
+     * @return The newly created dummy entry with the specified name (unpublished).
      */
-    public StorageNode retrieveRootStorageNode() {
-        return this.storageRootNode;
+    public Entry createDummyEntry(Entry destinationEntry, List<Entry> children, String entryName) {
+        return this.storageInterface.createNewEntry(destinationEntry, children, null, null, null, null).setName(entryName);
     }
 }

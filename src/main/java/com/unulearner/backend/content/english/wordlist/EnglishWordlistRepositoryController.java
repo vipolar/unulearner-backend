@@ -16,7 +16,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.web.bind.annotation.RestController;
 //import org.springframework.beans.factory.annotation.Autowired;
 
-import com.unulearner.backend.storage.properties.StorageProperties;
+import com.unulearner.backend.storage.config.StorageProperties;
 
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -64,7 +64,7 @@ public class EnglishWordlistRepositoryController {
         try {
             // Read the file from the specified path
             //TODO: this.storageProperties shouldn't be here!!! only the file URL!!!
-            String wordliURI = this.storageProperties.getRootDirectory() + wordlist;
+            String wordliURI = this.storageProperties.getRootDirectoryUrl() + wordlist;
             Path file = Path.of(wordliURI);
 
             Iterable<String> words = Files.lines(file)
