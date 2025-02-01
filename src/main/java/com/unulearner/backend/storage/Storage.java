@@ -21,11 +21,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
-import com.unulearner.backend.storage.model.Entry;
-import com.unulearner.backend.storage.formalization.EntryPath;
-import com.unulearner.backend.storage.specification.StorageInterface;
-import com.unulearner.backend.storage.specification.SecurityInterface;
-
+import com.unulearner.backend.storage.models.Entry;
+import com.unulearner.backend.storage.models.utility.EntryPath;
+import com.unulearner.backend.storage.interfaces.StorageInterface;
+import com.unulearner.backend.storage.interfaces.SecurityInterface;
 import com.unulearner.backend.storage.exceptions.StorageEntryException;
 import com.unulearner.backend.storage.exceptions.entry.EntryNotFoundException;
 import com.unulearner.backend.storage.exceptions.entry.EntryInaccessibleException;
