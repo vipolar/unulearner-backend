@@ -21,7 +21,7 @@ import com.unulearner.backend.dictionary.repositories.MeaningRepository;
 import com.unulearner.backend.dictionary.repositories.WordRepository;
 import com.unulearner.backend.dictionary.Dictionary;
 import com.unulearner.backend.dictionary.models.Language;
-import com.unulearner.backend.dictionary.models.Meaning;
+import com.unulearner.backend.dictionary.models.Definition;
 import com.unulearner.backend.dictionary.models.Word;
 
 @RestController
@@ -78,14 +78,14 @@ public class DictionaryController {
     }
 
     @GetMapping(path="/get/word/{wordUUID}/meanings")
-    public ResponseEntity<Iterable<Meaning>> getAllMeanings(
+    public ResponseEntity<Iterable<Definition>> getAllMeanings(
             @PathVariable(required = true) UUID wordUUID,
             @PathVariable(required = true) String languageCode,
             @RequestParam(defaultValue = "0", required = false) Integer page,
             @RequestParam(defaultValue = "20", required = false) Integer size
         ) {
 
-        Iterable<Meaning> wordlist = meaningRepository.findAllByWordId(wordUUID);
+        Iterable<Definition> wordlist = meaningRepository.findAllByWordId(wordUUID);
 
         return new ResponseEntity<>(wordlist, HttpStatus.OK);
     }

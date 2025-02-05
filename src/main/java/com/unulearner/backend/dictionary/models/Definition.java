@@ -16,10 +16,10 @@ import jakarta.persistence.Id;
 import java.util.UUID;
 
 @Entity
-@Table(name = "meanings")
-public class Meaning {
+@Table(name = "definition")
+public class Definition {
     @Id
-    @GeneratedValue(strategy = GenerationType.UUID)
+    @GeneratedValue(strategy = GenerationType.AUTO)
     @Column(name = "id", columnDefinition = "UUID", unique = true, nullable = false, updatable = false)
     private UUID id;
 
@@ -27,8 +27,9 @@ public class Meaning {
         return this.id;
     }
 
-    public void setId(UUID id) {
+    public Definition setId(UUID id) {
         this.id = id;
+        return this;
     }
 
     @ManyToOne
@@ -39,8 +40,9 @@ public class Meaning {
         return this.word;
     }
 
-    public void setWord(Word word) {
+    public Definition setWord(Word word) {
         this.word = word;
+        return this;
     }
 
     @Column(name = "part_of_speech", nullable = false)
@@ -51,19 +53,21 @@ public class Meaning {
         return this.partOfSpeech;
     }
 
-    public void setPartOfSpeech(PartOfSpeech partOfSpeech) {
+    public Definition setPartOfSpeech(PartOfSpeech partOfSpeech) {
         this.partOfSpeech = partOfSpeech;
+        return this;
     }
 
-    @Column(name = "meaning", columnDefinition = "TEXT", nullable = false)
-    private String meaning;
+    @Column(name = "definition", columnDefinition = "TEXT", nullable = false)
+    private String definition;
 
-    public String getMeaning() {
-        return this.meaning;
+    public String getDefinition() {
+        return this.definition;
     }
 
-    public void setMeaning(String meaning) {
-        this.meaning = meaning;
+    public Definition setDefinition(String definition) {
+        this.definition = definition;
+        return this;
     }
 
     @Column(name = "context", columnDefinition = "TEXT", nullable = false)
@@ -73,7 +77,8 @@ public class Meaning {
         return this.context;
     }
 
-    public void setContext(String context) {
+    public Definition setContext(String context) {
         this.context = context;
+        return this;
     }
 }

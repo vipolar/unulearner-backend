@@ -40,7 +40,7 @@ public class Entry {
      * URL, while unique, cannot work as an ID as it can change with the file/directory location.
      */
     @Id
-    @GeneratedValue(strategy = GenerationType.UUID)
+    @GeneratedValue(strategy = GenerationType.AUTO)
     @Column(name = "id", columnDefinition = "UUID", unique = true, nullable = false, updatable = false)
     private UUID id;
 

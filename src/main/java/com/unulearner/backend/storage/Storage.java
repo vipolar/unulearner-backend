@@ -46,6 +46,7 @@ public class Storage {
     private final SecurityInterface securityInterface;
     private final StorageInterface storageInterface;
     private final HashMap<UUID, Entry> entryCache;
+    private final HashMap<String, Entry> urlMap;
     private final EntryPath rootEntryPath;
     private final Entry rootEntry;
 
@@ -53,6 +54,7 @@ public class Storage {
         final Deque<Entry> directoryStackDeque = new ArrayDeque<Entry>();
 
         this.entryCache = new HashMap<UUID, Entry>();
+        this.urlMap = new HashMap<String, Entry>();
         this.securityInterface = securityInterface;
         this.storageInterface = storageInterface;
 
@@ -89,6 +91,7 @@ public class Storage {
                             }
 
                             entryCache.put(entry.getId(), entry);
+                            urlMap.put(entry.getUrl(), entry);
                             directoryStackDeque.offer(entry);
 
                             logger.info("Storage root has been successfully initialized at %s".formatted(dirPath.toString()));
@@ -129,7 +132,7 @@ public class Storage {
                         }
 
 
-                        if (entryCache.put(entry.getId(), entry) != null) {
+                        if (entryCache.put(entry.getId(), entry) != null || urlMap.put(entry.getUrl(), entry) != null) {
                             throw new RuntimeException("Directory '%s' already exists in the storage hashmap!".formatted(dirEntryPath.getRelativePath().toString()));
                         }
 
@@ -186,7 +189,7 @@ public class Storage {
                             stackLastEntry.getChildren().add((-iEntry - 1), entry);
                         }
 
-                        if (entryCache.put(entry.getId(), entry) != null) {
+                        if (entryCache.put(entry.getId(), entry) != null || urlMap.put(entry.getUrl(), entry) != null) {
                             throw new RuntimeException("File '%s' already exists in the storage hashmap".formatted(fileEntryPath.getRelativePath().toString()));
                         }
                     } catch (Exception exception) {
@@ -428,6 +431,7 @@ public class Storage {
         }
         
         this.entryCache.put(persistedEntry.getId(), persistedEntry);
+        this.urlMap.put(persistedEntry.getUrl(), persistedEntry);
 
         logger.info("%s '%s' has been published successfully".formatted(persistedEntry.getIsDirectory() ? "Directory" : "File", persistedEntry.getUrl()));
         return persistedEntry;
@@ -790,5 +794,16 @@ public class Storage {
      */
     public Entry createDummyEntry(Entry destinationEntry, List<Entry> children, String entryName) {
         return this.storageInterface.createNewEntry(destinationEntry, children, null, null, null, null).setName(entryName);
+    }
+
+    public Entry whwh(String url) throws Exception {
+        final Path relativePath = this.rootEntryPath.getPath().relativize(Path.of(url));
+        final Entry entry = this.urlMap.get("/%s".formatted(relativePath.toString()));
+
+        if (entry == null) {
+            throw new EntryNotFoundException("Entry '%s' not found".formatted(url));
+        }
+    
+        return entry;
     }
 }

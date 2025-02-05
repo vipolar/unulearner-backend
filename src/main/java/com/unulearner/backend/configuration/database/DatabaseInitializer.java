@@ -19,9 +19,28 @@ public class DatabaseInitializer {
         jdbcTemplate.execute(sql);
     }
 
+    public void setDefaultUuidForIdColumns() {
+        String sql = """
+            DO $$ 
+            DECLARE 
+                r RECORD;
+            BEGIN
+                FOR r IN (SELECT table_name 
+                          FROM information_schema.columns 
+                          WHERE column_name = 'id' 
+                            AND data_type = 'uuid'
+                            AND column_default IS NULL) 
+                LOOP
+                    EXECUTE format('ALTER TABLE %I ALTER COLUMN id SET DEFAULT gen_random_uuid()', r.table_name);
+                END LOOP;
+            END $$;
+        """;
+        jdbcTemplate.execute(sql);
+    }
+
     @PostConstruct
     public void initializeDatabase() {
         enablePgTrgmExtension();
-        // other initialization tasks...
+        setDefaultUuidForIdColumns();
     }
 }

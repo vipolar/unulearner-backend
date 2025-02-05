@@ -10,8 +10,8 @@ import jakarta.persistence.Id;
 import java.util.UUID;
 
 @Entity
-@Table(name = "languages")
-public class Language {
+@Table(name = "comments")
+public class Comment {
     @Id
     @GeneratedValue(strategy = GenerationType.AUTO)
     @Column(name = "id", columnDefinition = "UUID", unique = true, nullable = false, updatable = false)
@@ -20,7 +20,7 @@ public class Language {
     public UUID getId() {
         return this.id;
     }
-    public Language setId(UUID id) {
+    public Comment setId(UUID id) {
         this.id = id;
         return this;
     }
@@ -31,7 +31,7 @@ public class Language {
         return this.name;
     }
 
-    public Language setName(String name) {
+    public Comment setName(String name) {
         this.name = name;
         return this;
     }
@@ -42,8 +42,9 @@ public class Language {
         return this.code;
     }
 
-    public Language setCode(String code) {
+    public Comment setCode(String code) {
         this.code = code;
         return this;
     }
 }
+

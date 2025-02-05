@@ -18,5 +18,8 @@ public interface WordRepository extends JpaRepository<Word, UUID> {
                "ABS(LENGTH(ew.word) - LENGTH(:partialWord)) " + "LIMIT 12", nativeQuery = true)
     Iterable<Word> findAllMatching(@Param("partialWord") String partialWord, @Param("languageCode") String languageCode);
 
+//    @Query("SELECT w FROM Word w " + "JOIN w.definitions m " + "JOIN m.words mw " + "WHERE w.language.code = :langCode AND w.word = :word")
+//    List<Word> findTranslations(@Param("langCode") String langCode, @Param("word") String word);
+
     List<Word> findByLanguage(Language language);
 }

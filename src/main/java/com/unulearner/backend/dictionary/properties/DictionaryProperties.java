@@ -1,5 +1,9 @@
 package com.unulearner.backend.dictionary.properties;
 
+import java.util.List;
+import java.util.Map;
+
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
 
@@ -63,4 +67,25 @@ public class DictionaryProperties {
     //*                                                        *//
     //**********************************************************//
 
+    //**********************************************************//
+    private Map<String, String> initiallyAvailableLanguages;
+
+    public Map<String, String> getInitiallyAvailableLanguages() {
+        return this.initiallyAvailableLanguages;
+    }
+
+    public void setInitiallyAvailableLanguages(Map<String, String> languages) {
+        this.initiallyAvailableLanguages = languages;
+    }
+
+    //**********************************************************//
+    private Map<String, List<Map<String, String>>> initiallyAvailableWordLists;
+
+    public List<Map<String, String>> getInitiallyAvailableWordLists(String languageCode) {
+        return this.initiallyAvailableWordLists.getOrDefault(languageCode, List.of());
+    }
+
+    public void setInitiallyAvailableWordLists(Map<String, List<Map<String, String>>> wordLists) {
+        this.initiallyAvailableWordLists = wordLists;
+    }
 }
